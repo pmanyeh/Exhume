@@ -65,6 +65,25 @@ typedef struct PlatPointer {
    close box). */
 enum { PLAT_SUSPEND = 1, PLAT_RESUME = 2, PLAT_QUIT_REQUEST = 3 };
 
+/* Optional presentation layer, in OUTPUT pixels (not window points or game pixels).
+   rgba is backend-owned, tightly packed R,G,B,A bytes with straight alpha, cleared
+   to transparent before each call. Rows start at the top. Only write within it;
+   neither this descriptor nor its pixels may be retained after the callback.
+   viewport is exactly the game's destination, including letterbox, aspect and
+   integer scaling. Map game (x,y) to (viewport_x + x*viewport_w/logical_width,
+   viewport_y + y*viewport_h/logical_height); fractional edges are intentional.
+   window_width/height are window coordinates, allowing a caller to observe HiDPI.
+   The callback runs on the presentation thread; publish immutable snapshots or
+   synchronize any data shared with the game. It is not called without a renderer
+   (hidden runs), while minimized, or for a zero-size output. Settings are above it. */
+typedef struct PlatOverlay {
+    uint8_t *rgba;
+    int width, height, pitch;
+    int window_width, window_height;
+    int logical_width, logical_height;
+    float viewport_x, viewport_y, viewport_w, viewport_h;
+} PlatOverlay;
+
 /* What the backend calls. Every hook runs on the backend's thread, not the game's, as an
    interrupt handler did; each must only do what an interrupt handler could. */
 typedef struct PlatHooks {
@@ -82,6 +101,12 @@ typedef struct PlatHooks {
     /* Once per pass of the backend's loop, after the events: an input script's (inscript.c).
        May be NULL. */
     void (*tick)(void);
+    /* Return nonzero to composite this frame, zero to leave the game untouched.
+       NULL: no allocation, callback or overlay draw. Initialize hooks to zero.
+       overlay_data must remain valid until plat_run returns (the browser loop's
+       lifetime on Web); it is never freed by the backend. */
+    int (*overlay)(const PlatOverlay *frame, void *overlay_data);
+    void *overlay_data;
 } PlatHooks;
 
 /* How the backend presents the screen, and the debug options. */

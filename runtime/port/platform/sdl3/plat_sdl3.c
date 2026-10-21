@@ -9,6 +9,7 @@
    hook, converts it through the DAC's palette and presents it, so the screen updates however
    the game spends its time, as a CRT did. */
 #include <SDL3/SDL.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -493,7 +494,9 @@ static struct loop {
     uint32_t lut[256];
     SDL_Window *win;
     SDL_Renderer *ren;
-    SDL_Texture *tex, *ltex;
+    SDL_Texture *tex, *ltex, *otex;
+    uint8_t *overlay;
+    int ow, oh;
     int tw, th, w, hgt, quit, shot;
     unsigned swallow;
     int hidden_win;
@@ -503,6 +506,47 @@ static struct loop {
     SDL_FRect dst;
     Uint64 start;
 } L = { .w = 320, .hgt = 200 };
+
+/* Output-sized RGBA, never stretched from the game's low-resolution texture.
+   All allocation, callback and upload happen on the renderer's thread. */
+static void draw_overlay(void)
+{
+    int w, h;
+    PlatOverlay f;
+    if (!hooks->overlay || !SDL_GetCurrentRenderOutputSize(L.ren, &w, &h) || w <= 0 || h <= 0) return;
+    if (w != L.ow || h != L.oh) {
+        if (L.otex) SDL_DestroyTexture(L.otex);
+        free(L.overlay);
+        L.otex = NULL;
+        L.overlay = NULL;
+        L.ow = w; L.oh = h;
+        /* pitch is an int in SDL; size_t arithmetic must not wrap either. */
+        if (w <= INT_MAX / 4 && (size_t)h <= SIZE_MAX / ((size_t)w * 4)) {
+            L.overlay = malloc((size_t)w * 4 * (size_t)h);
+            if (L.overlay) L.otex = SDL_CreateTexture(L.ren, SDL_PIXELFORMAT_RGBA32,
+                                                      SDL_TEXTUREACCESS_STREAMING, w, h);
+        }
+        if (!L.otex || !SDL_SetTextureBlendMode(L.otex, SDL_BLENDMODE_BLEND) ||
+            !SDL_SetTextureScaleMode(L.otex, SDL_SCALEMODE_NEAREST)) {
+            fprintf(stderr, PLAT_NAME ": overlay unavailable at %dx%d: %s\n", w, h, SDL_GetError());
+            if (L.otex) SDL_DestroyTexture(L.otex);
+            L.otex = NULL;
+            free(L.overlay);
+            L.overlay = NULL;
+        }
+    }
+    if (!L.otex) return; /* try again after a resize; keep the game usable */
+    memset(&f, 0, sizeof f);
+    f.rgba = L.overlay; f.width = w; f.height = h; f.pitch = w * 4;
+    SDL_GetWindowSize(L.win, &f.window_width, &f.window_height);
+    f.logical_width = L.w; f.logical_height = L.hgt;
+    f.viewport_x = L.dst.x; f.viewport_y = L.dst.y;
+    f.viewport_w = L.dst.w; f.viewport_h = L.dst.h;
+    memset(f.rgba, 0, (size_t)f.pitch * (size_t)h);
+    if (hooks->overlay(&f, hooks->overlay_data) &&
+        SDL_UpdateTexture(L.otex, NULL, f.rgba, f.pitch))
+        SDL_RenderTexture(L.ren, L.otex, NULL, NULL);
+}
 
 /* One pass of the loop: the events, the game's picture presented. 0 to go on, 1 to stop. */
 static int loop_step(void)
@@ -727,6 +771,7 @@ static int loop_step(void)
         SDL_SetRenderDrawColor(L.ren, 0, 0, 0, 255);
         SDL_RenderClear(L.ren);
         SDL_RenderTexture(L.ren, L.tex, NULL, &L.dst);
+        draw_overlay();
         if (L.ltex && settings_draw(L.layer)) {
             /* the settings screen: the picture dimmed, the layer over it */
             SDL_SetRenderDrawBlendMode(L.ren, SDL_BLENDMODE_BLEND);
@@ -791,6 +836,8 @@ static int loop_end(void)
     if (L.ren) fprintf(stderr, PLAT_NAME ": %u presents, %u paced, %u passes with the window hidden\n", L.presents, L.paced, L.hidden_passes);
     if (L.tex) SDL_DestroyTexture(L.tex);
     if (L.ltex) SDL_DestroyTexture(L.ltex);
+    if (L.otex) SDL_DestroyTexture(L.otex);
+    free(L.overlay);
     if (L.ren) SDL_DestroyRenderer(L.ren);
     if (L.win) SDL_DestroyWindow(L.win);
     SDL_Quit();
