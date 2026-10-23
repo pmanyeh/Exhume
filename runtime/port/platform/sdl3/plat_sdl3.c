@@ -37,6 +37,43 @@ void plat_pointer_capture(int on)
 {
     SDL_SetAtomicInt(&capture_req, on ? 1 : 2);
 }
+
+static SDL_AtomicInt text_req;         /* plat_text_input's request: 0 none, 1 on, 2 off */
+static SDL_SpinLock text_lock;
+static char text_buf[256];             /* committed text the game has not taken, UTF-8 */
+static size_t text_len;
+
+void plat_text_input(int on)
+{
+    SDL_SetAtomicInt(&text_req, on ? 1 : 2);
+}
+
+size_t plat_text_take(char *out, size_t n)
+{
+    size_t len;
+    if (!out || !n) return 0;
+    SDL_LockSpinlock(&text_lock);
+    len = text_len < n - 1 ? text_len : n - 1;
+    while (len && len < text_len && (text_buf[len] & 0xC0) == 0x80) len--;   /* whole characters */
+    memcpy(out, text_buf, len);
+    memmove(text_buf, text_buf + len, text_len - len);
+    text_len -= len;
+    SDL_UnlockSpinlock(&text_lock);
+    out[len] = 0;
+    return len;
+}
+
+/* Main thread: committed text from the input method, kept whole or dropped when it does not fit. */
+static void text_put(const char *s)
+{
+    size_t len = s ? strlen(s) : 0;
+    SDL_LockSpinlock(&text_lock);
+    if (len && len < sizeof text_buf - text_len) {
+        memcpy(text_buf + text_len, s, len);
+        text_len += len;
+    }
+    SDL_UnlockSpinlock(&text_lock);
+}
 static int game_status;
 
 /* SDL scan codes (USB HID usages) to PC set-1 make codes. 0 means no key; a value with bit 8
@@ -556,6 +593,18 @@ static int loop_step(void)
     int i;
 
     {
+        int t = SDL_SetAtomicInt(&text_req, 0);
+        if (t && L.win) {
+            if (t == 1) SDL_StartTextInput(L.win);
+            else {
+                SDL_StopTextInput(L.win);
+                SDL_LockSpinlock(&text_lock);
+                text_len = 0;                   /* what came after the prompt ended goes nowhere */
+                SDL_UnlockSpinlock(&text_lock);
+            }
+        }
+    }
+    {
         int c = SDL_SetAtomicInt(&capture_req, 0);
         if (c && L.win && !locked) {      /* the pointer lock's own capture stands */
             captured = c == 1;
@@ -723,6 +772,9 @@ static int loop_step(void)
         case SDL_EVENT_WINDOW_RESTORED:
             if (e.type == SDL_EVENT_WINDOW_RESTORED) L.hidden_win = 0;
             if (hooks->lifecycle) hooks->lifecycle(PLAT_RESUME);
+            break;
+        case SDL_EVENT_TEXT_INPUT:
+            if (SDL_TextInputActive(L.win)) text_put(e.text.text);
             break;
         default:
             break;

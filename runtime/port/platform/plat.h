@@ -152,6 +152,13 @@ void plat_game_stop(int status, const char *why) __attribute__((noreturn));
    option's capture (mouse_lock) is apart from it. */
 void plat_pointer_capture(int on);
 
+/* Text input through the host's input method (an IME), from the game's thread: on (1) while a
+   prompt wants text the keyboard's codes cannot carry, off (0) after. The event loop applies it.
+   plat_text_take moves the text committed since the last call, UTF-8, into out (at most n - 1
+   bytes and a 0; whole characters only) and returns its length; the keys still arrive as keys. */
+void plat_text_input(int on);
+size_t plat_text_take(char *out, size_t n);
+
 /* The settings screen's live options (ui/settings.h), from the main thread, so from inside the
    backend's own loop: the window's display (fullscreen; the scale of the window when not full
    screen; the 4:3 stretch; whole multiples only) and the pointer lock option (mouse_lock). */
