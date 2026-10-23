@@ -160,7 +160,22 @@ def windows_resource(cc):
         if RELEASE: sys.exit('portbuild.py: a release build for Windows needs its icon (tools/icons.py) and llvm-windres or windres')
         return []
     rc, obj = os.path.join(OUT, P.exe + '.rc'), os.path.join(OUT, P.exe + '-res.o')
-    with open(rc, 'w') as f: f.write('1 ICON "%s"\n' % ico.replace(os.sep, '/').replace('\\', '/'))
+    # the manifest's UTF-8 code page (Windows 10 1903 on): the C runtime's file names, the
+    # command line and the environment are UTF-8, as the port's paths are, so a game or home
+    # folder named in any language opens; older Windows ignore it
+    manifest = os.path.join(OUT, P.exe + '.manifest')
+    with open(manifest, 'w', newline='\n') as f:
+        f.write('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+                '<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">\n'
+                '  <application xmlns="urn:schemas-microsoft-com:asm.v3">\n'
+                '    <windowsSettings>\n'
+                '      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>\n'
+                '    </windowsSettings>\n'
+                '  </application>\n'
+                '</assembly>\n')
+    with open(rc, 'w') as f:
+        f.write('1 ICON "%s"\n' % ico.replace(os.sep, '/').replace('\\', '/'))
+        f.write('1 24 "%s"\n' % manifest.replace(os.sep, '/').replace('\\', '/'))
     cmd = [tool, '-O', 'coff', '-i', rc, '-o', obj]
     if 'llvm' in os.path.basename(tool):        # for the compiler's target, not the tool's host
         m = subprocess.run([cc, '-dumpmachine'], capture_output=True, text=True).stdout.strip()
