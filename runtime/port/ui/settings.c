@@ -78,7 +78,7 @@ static int same_folder(const char *a, const char *b)
 #define FOOTER "F11 opens this at any time \xC2\xB7 Esc closes"
 #endif
 
-static const char *const tab_name[SET_TABS] = { "Sound", "Controls", "Display", "Enhancements", "Game" };
+static const char *const tab_name[SET_TABS] = { "Sound", "Controls", "Display", "Enhancements", "Game", "Language" };
 
 static const char *home_dir = "";
 static const char *title_text = "";
@@ -101,6 +101,29 @@ static int pick_row = -1;                 /* the folder row waiting for the pick
 static int drag_row = -1;                 /* the slider being dragged */
 static int was_down;
 static char notice[96];                   /* a line under the rows: why a folder was refused */
+
+static const struct settings_text *xl;   /* the game's words, settings_set_text */
+
+void settings_set_text(const struct settings_text *t) { xl = t; }
+
+/* S as the screen shows it: the game's words for it, else S */
+static const char *tr(const char *s)
+{
+    const char *t = s && xl && xl->translate ? xl->translate(s) : NULL;
+    return t ? t : s;
+}
+
+static int ascii(const char *s)
+{
+    for (; *s; s++) {
+        if ((unsigned char)*s == 0xC2 && (unsigned char)s[1] == 0xB7) s++;     /* the middle dot the font draws */
+        else if ((unsigned char)*s >= 0x80) return 0;
+    }
+    return 1;
+}
+
+/* whether S (as shown) goes to the game's drawing: it is not ASCII and the game draws */
+static int hooked(const char *s) { return xl && xl->draw && xl->width && !ascii(s); }
 
 static uint32_t rgb(uint32_t c)
 {
@@ -284,7 +307,8 @@ void settings_init(const char *home, const struct setting *table, int n, const c
     for (i = 0; i < n && nrows < MAX_ROWS; i++) {
         rows[nrows] = table[i];
         /* a folder row's value is a word ("found") or a path, which does not say it opens a picker */
-        snprintf(help[nrows], sizeof help[nrows], "%s", table[i].kind == SET_FOLDER ? "Enter or click to choose a folder" : "");
+        snprintf(help[nrows], sizeof help[nrows], "%s", table[i].help ? table[i].help
+                 : table[i].kind == SET_FOLDER ? "Enter or click to choose a folder" : "");
         mark[nrows] = NULL;
         enh_bit[nrows++] = -1;
     }
@@ -340,6 +364,10 @@ void settings_set_value(int row, int v)
 {
     if (row >= 0 && row < nrows) value[row] = v;
 }
+void settings_set_start(int row, int v)
+{
+    if (row >= 0 && row < nrows) value[row] = start_value[row] = v;
+}
 
 const char *settings_note(int row)
 {
@@ -387,6 +415,50 @@ EMSCRIPTEN_KEEPALIVE const char *web_test_settings(int tab)
 }
 #endif
 
+/* The tab bar: every tab but Language, which a game without its rows does not have */
+static int tab_shown(int tab) { return tab != SET_TAB_TEXT || tab_count(tab) > 0; }
+
+static int tabs_shown(void)
+{
+    int t, n = 0;
+    for (t = 0; t < SET_TABS; t++) n += tab_shown(t);
+    return n;
+}
+
+/* a tab's width: the bar's, shared out (TAB_W at most) */
+static int tab_w(void)
+{
+    int w = (SET_W - 2 * TITLE_X) / tabs_shown();
+    return w < TAB_W ? w : TAB_W;
+}
+
+/* a shown tab's place on the bar, and the tab at a place (or -1) */
+static int tab_place(int tab)
+{
+    int t, n = 0;
+    for (t = 0; t < tab; t++) n += tab_shown(t);
+    return n;
+}
+
+static int tab_at(int place)
+{
+    int t;
+    for (t = 0; t < SET_TABS; t++)
+        if (tab_shown(t) && place-- == 0) return t;
+    return -1;
+}
+
+/* the shown tab DIR (1 or -1) from TAB, round the bar */
+static int tab_step(int tab, int dir)
+{
+    int t = tab, i;
+    for (i = 0; i < SET_TABS; i++) {
+        t = ((t + dir) % SET_TABS + SET_TABS) % SET_TABS;
+        if (tab_shown(t)) return t;
+    }
+    return tab;
+}
+
 static void scroll_to_sel(void)
 {
     if (sel < 0) return;
@@ -419,15 +491,15 @@ void settings_key(int key)
         sel = sel + 1 >= n ? -1 : sel + 1;
         break;
     case SET_KEY_LEFT:
-        if (sel < 0) set_tab(cur_tab - 1, 1);
+        if (sel < 0) set_tab(tab_step(cur_tab, -1), 1);
         else change(r, -1);
         break;
     case SET_KEY_RIGHT:
-        if (sel < 0) set_tab(cur_tab + 1, 1);
+        if (sel < 0) set_tab(tab_step(cur_tab, 1), 1);
         else change(r, 1);
         break;
     case SET_KEY_TAB:
-        set_tab(cur_tab + 1, 0);
+        set_tab(tab_step(cur_tab, 1), 0);
         break;
     case SET_KEY_ENTER:
         if (r >= 0) change(r, 1);
@@ -468,8 +540,8 @@ void settings_pointer(int x, int y, int down)
         if (drag_row >= 0) set_slider_from_x(drag_row, x);
         return;
     }
-    if (y >= TAB_Y && y < TAB_Y + TAB_H && x >= TITLE_X && x < TITLE_X + TAB_W * SET_TABS) {
-        set_tab((x - TITLE_X) / TAB_W, 0);
+    if (y >= TAB_Y && y < TAB_Y + TAB_H && x >= TITLE_X && x < TITLE_X + tab_w() * tabs_shown()) {
+        if (tab_at((x - TITLE_X) / tab_w()) >= 0) set_tab(tab_at((x - TITLE_X) / tab_w()), 0);
         return;
     }
     if (y < ROW_Y || y >= ROW_Y + ROW_H * VISIBLE) return;
@@ -510,9 +582,10 @@ static void glyph(uint32_t *px, int x, int y, unsigned char ch, uint32_t c)
 
 /* Draws S (at most MAX characters when MAX >= 0) and returns the pixels used. A UTF-8 middle dot
    is drawn as a raised full stop; the font has no other glyphs outside ASCII. */
-static int text(uint32_t *px, int x, int y, uint32_t c, const char *s, int max)
+static int text_raw(uint32_t *px, int x, int y, uint32_t c, const char *s, int max)
 {
     int x0 = x;
+    if (hooked(s)) return xl->draw(px, x, y, c, s);
     for (; *s && max != 0; s++, max--) {
         unsigned char ch = (unsigned char)*s;
         if (ch == 0xC2 && (unsigned char)s[1] == 0xB7) {
@@ -526,18 +599,53 @@ static int text(uint32_t *px, int x, int y, uint32_t c, const char *s, int max)
     return x - x0;
 }
 
+/* The same for one of the screen's strings, in the game's words when it has them */
+static int text(uint32_t *px, int x, int y, uint32_t c, const char *s, int max)
+{
+    return text_raw(px, x, y, c, tr(s), max);
+}
+
+/* The pixels S (as shown) takes */
+static int text_width(const char *s)
+{
+    s = tr(s);
+    return hooked(s) ? xl->width(s) : (int)strlen(s) * GLYPH_W;
+}
+
 /* The help line, wrapped at spaces into HELP_LINES lines of HELP_CHARS. */
-static void help_text(uint32_t *px, const char *s)
+static void help_text(uint32_t *px, const char *s, int lines)
 {
     int line, len, cut;
-    for (line = 0; line < HELP_LINES && *s; line++) {
+    s = tr(s);
+    if (hooked(s)) {
+        /* the game's words: lines as wide as fit, a UTF-8 character at a time */
+        char buf[256];
+        for (line = 0; line < lines && *s; line++) {
+            size_t n = 0, last = 0;
+            while (s[n]) {
+                size_t k = n + 1;
+                while (((unsigned char)s[k] & 0xC0) == 0x80) k++;
+                if (k >= sizeof buf) break;
+                memcpy(buf, s, k); buf[k] = 0;
+                if (xl->width(buf) > HELP_CHARS * GLYPH_W) break;
+                last = n = k;
+            }
+            if (!last) break;
+            memcpy(buf, s, last); buf[last] = 0;
+            text_raw(px, LABEL_X, HELP_Y + line * GLYPH_H, rgb(C_DIM), buf, -1);
+            s += last;
+            while (*s == ' ') s++;
+        }
+        return;
+    }
+    for (line = 0; line < lines && *s; line++) {
         len = (int)strlen(s);
         cut = len;
         if (len > HELP_CHARS) {
             for (cut = HELP_CHARS; cut > 0 && s[cut] != ' '; cut--) {}
             if (cut == 0) cut = HELP_CHARS;
         }
-        text(px, LABEL_X, HELP_Y + line * GLYPH_H, rgb(C_DIM), s, cut);
+        text_raw(px, LABEL_X, HELP_Y + line * GLYPH_H, rgb(C_DIM), s, cut);
         s += cut;
         while (*s == ' ') s++;
     }
@@ -548,7 +656,7 @@ static void value_text(const struct setting *s, int r, char *out, size_t n)
     size_t len;
     switch (s->kind) {
     case SET_CYCLE:
-        snprintf(out, n, "< %s >", value[r] < count_names(s) ? s->names[shown_value(r)] : "?");
+        snprintf(out, n, "< %s >", value[r] < count_names(s) ? tr(s->names[shown_value(r)]) : "?");
         break;
     case SET_BOOL:
         snprintf(out, n, "%s", value[r] ? "[x]" : "[ ]");
@@ -558,7 +666,7 @@ static void value_text(const struct setting *s, int r, char *out, size_t n)
         break;
     default:
         if (s->show) {                      /* the row's own word for its folder ("found", "not found") */
-            snprintf(out, n, "%s", s->show(path[r]));
+            snprintf(out, n, "%s", tr(s->show(path[r])));
             break;
         }
         len = strlen(path[r]);
@@ -579,14 +687,15 @@ int settings_draw(uint32_t *px)
     text(px, TITLE_X, TITLE_Y, rgb(C_SELECT), title_text, -1);
 
     for (t = 0; t < SET_TABS; t++) {
-        int x = TITLE_X + t * TAB_W;
-        int len = (int)strlen(tab_name[t]) * GLYPH_W;
+        int tw = tab_w(), x, len = text_width(tab_name[t]);
+        if (!tab_shown(t)) continue;
+        x = TITLE_X + tab_place(t) * tw;
         if (t == cur_tab && sel < 0) {
-            fill(px, x, TAB_Y, TAB_W - 4, TAB_H, rgb(C_SELECT));
-            text(px, x + (TAB_W - 4 - len) / 2, TAB_Y + 4, rgb(C_BACK), tab_name[t], -1);
+            fill(px, x, TAB_Y, tw - 4, TAB_H, rgb(C_SELECT));
+            text(px, x + (tw - 4 - len) / 2, TAB_Y + 4, rgb(C_BACK), tab_name[t], -1);
         } else {
-            text(px, x + (TAB_W - 4 - len) / 2, TAB_Y + 4, rgb(t == cur_tab ? C_SELECT : C_DIM), tab_name[t], -1);
-            if (t == cur_tab) fill(px, x, TAB_Y + TAB_H - 2, TAB_W - 4, 2, rgb(C_SELECT));
+            text(px, x + (tw - 4 - len) / 2, TAB_Y + 4, rgb(t == cur_tab ? C_SELECT : C_DIM), tab_name[t], -1);
+            if (t == cur_tab) fill(px, x, TAB_Y + TAB_H - 2, tw - 4, 2, rgb(C_SELECT));
         }
     }
 
@@ -622,7 +731,10 @@ int settings_draw(uint32_t *px)
         text(px, s->kind == SET_SLIDER ? VALUE_X + SLIDER_W + GLYPH_W : s->kind == SET_FOLDER ? VALUE_X + FOLDER_W : VALUE_X,
              y + 1, fg, buf, -1);
         if (settings_note(r)) text(px, NOTE_X, y + 1, fg == rgb(C_BACK) ? fg : rgb(C_DIM), settings_note(r), 18);
-        if (k == sel && help[r][0]) help_text(px, help[r]);
+        if (k == sel && help[r][0]) help_text(px, help[r], s->preview ? 1 : HELP_LINES);
+        if (k == sel && s->preview)
+            s->preview(px, LABEL_X, HELP_Y + (help[r][0] ? GLYPH_H : 0), SET_W - 2 * LABEL_X,
+                       (HELP_LINES - (help[r][0] ? 1 : 0)) * GLYPH_H, value[r]);
     }
     if (top > 0) text(px, SET_W - 28, ROW_Y - 18, rgb(C_DIM), "^", -1);
     if (top + VISIBLE < n) text(px, SET_W - 28, ROW_Y + ROW_H * VISIBLE, rgb(C_DIM), "v", -1);

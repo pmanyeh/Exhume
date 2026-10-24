@@ -13,6 +13,16 @@
 int port_config_get(const char *home, const char *key, char *out, size_t n);
 int port_config_set(const char *home, const char *key, const char *value);
 static int applied = -1, applies;
+static int drawn_hooked, saw_untranslated_volume;
+static const char *test_translate(const char *s) { return !strcmp(s, "Volume") ? "\xE9\x9F\xB3\xE9\x87\x8F" : NULL; }
+static int test_draw(uint32_t *px, int x, int y, uint32_t c, const char *s)
+{
+    (void)px; (void)x; (void)y; (void)c;
+    drawn_hooked++;
+    if (!strcmp(s, "Volume")) saw_untranslated_volume = 1;
+    return 16 * (int)(strlen(s) / 3);
+}
+static int test_width(const char *s) { return 16 * (int)(strlen(s) / 3); }
 static void apply_vol(int v) { applied = v; applies++; }
 static const char *const cards[] = { "None", "Sound Blaster", "MT-32", NULL };
 static const char *const cards_stored[] = { "0", "3", "6", NULL };
@@ -35,6 +45,8 @@ static const struct setting S[] = {
 #define ROW_H 20
 #define VALUE_X 248
 #define LABEL_X 24
+#define TITLE_X 16
+#define TAB_Y 36
 static int fails;
 #define CHECK(c, m) do { if (!(c)) { printf("FAIL %s\n", m); fails++; } else printf("ok   %s\n", m); } while (0)
 static int get_bad(void) { return -1; }
@@ -255,6 +267,33 @@ int main(void)
         }
         CHECK(settings_value(0) == 0 && hidden_applies == 0, "nor is it reached from any tab, by key or by click");
         CHECK(settings_draw(px), "and the screen draws");
+        settings_show(0);
+    }
+    {
+        /* the Language tab: on the bar only with rows; the game's words for the screen's strings,
+           drawn by the game when they are not ASCII, the bitmap font otherwise */
+        static const struct setting L[] = {
+            { SET_TAB_SOUND, "Volume", SET_SLIDER, "vol-test", NULL, NULL, 0, 10, 1, 5, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL },
+            { SET_TAB_TEXT, "Language", SET_CYCLE, "lang-test", cards, cards_stored, 0, 0, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL },
+        };
+        static const struct settings_text hooks = { test_translate, test_draw, test_width };
+        int k;
+        settings_init("h", L, 1, "Test");
+        settings_show(1);
+        for (k = 0; k < SET_TABS - 1; k++) settings_key(SET_KEY_TAB);   /* the five shown: round to Sound */
+        CHECK(settings_value(0) == 5, "without Language rows, Tab walks the five tabs back to Sound");
+        settings_key(SET_KEY_DOWN);
+        settings_set_text(&hooks);
+        drawn_hooked = 0;
+        CHECK(settings_draw(px) && drawn_hooked > 0, "the game draws the words it gives");
+        CHECK(!saw_untranslated_volume, "a translated label is not drawn in English");
+        settings_set_text(NULL);
+        settings_init("h", L, 2, "Test");
+        settings_show(1);
+        settings_pointer(TITLE_X + 5 * ((SET_W - 2 * TITLE_X) / 6) + 10, TAB_Y + 5, 1);
+        settings_pointer(TITLE_X + 5 * ((SET_W - 2 * TITLE_X) / 6) + 10, TAB_Y + 5, 0);
+        settings_key(SET_KEY_ENTER);
+        CHECK(settings_value(1) == 1, "with them, the sixth tab is Language and its row takes Enter");
         settings_show(0);
     }
     printf("%d failed\n", fails);

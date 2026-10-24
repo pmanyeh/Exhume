@@ -7,7 +7,8 @@
 #define SETTINGS_H
 #include <stdint.h>
 
-enum { SET_TAB_SOUND, SET_TAB_CONTROLS, SET_TAB_DISPLAY, SET_TAB_ENHANCE, SET_TAB_GAME, SET_TABS };
+/* SET_TAB_TEXT, the game's language and text, is shown only when the game's table has rows for it */
+enum { SET_TAB_SOUND, SET_TAB_CONTROLS, SET_TAB_DISPLAY, SET_TAB_ENHANCE, SET_TAB_GAME, SET_TAB_TEXT, SET_TABS };
 enum { SET_CYCLE, SET_BOOL, SET_SLIDER, SET_FOLDER };
 
 struct setting {
@@ -28,7 +29,23 @@ struct setting {
     int (*limit)(void);             /* SET_CYCLE, optional: how many of its values are offered now (Window
                                        scale: those that fit the display); a value past them shows and steps
                                        as the last, and the file keeps it */
+    const char *help;               /* optional: the help line under the rows when the row is selected */
+    /* optional: drawn in the help area (x, y, w, h of the layer) when the row is selected, with the
+       row's current value: a sample of what the row sets */
+    void (*preview)(uint32_t *px, int x, int y, int w, int h, int value);
 };
+
+/* The game's words for the screen (optional; NULL or a NULL member: English in the screen's own
+   bitmap font). translate gives the text to show for one of the screen's strings (its own, the
+   table's labels, names, help and notes, the enhancements'), or NULL for the English; draw puts
+   UTF-8 text on the layer at (x, y), the top of a GLYPH_H-high line, in colour c (0xAABBGGRR) and
+   returns its width; width measures it. Text that is all ASCII is drawn in the bitmap font. */
+struct settings_text {
+    const char *(*translate)(const char *english);
+    int (*draw)(uint32_t *px, int x, int y, uint32_t c, const char *utf8);
+    int (*width)(const char *utf8);
+};
+void settings_set_text(const struct settings_text *text);
 
 enum { SET_KEY_UP, SET_KEY_DOWN, SET_KEY_LEFT, SET_KEY_RIGHT, SET_KEY_TAB, SET_KEY_ENTER,
        SET_KEY_ESC, SET_KEY_F11 };
@@ -44,6 +61,9 @@ void settings_pointer(int x, int y, int down);   /* in the layer's 640x400 pixel
 int  settings_draw(uint32_t *rgba); /* 640*400 pixels; 0 when not shown */
 int  settings_value(int row);       /* the row's current value (index, 0/1, slider value) */
 void settings_set_value(int row, int value);   /* the row's current value only: nothing is written or applied */
+/* the value the run started with (a restart row's, the command line's over the file's): shown, and
+   what "Restart to apply" compares with; nothing is written or applied */
+void settings_set_start(int row, int value);
 const char *settings_note(int row); /* what the row's note column says ("Restart to apply", "changes play"), or NULL */
 const char *settings_help(int row); /* the help line under the rows when the row is selected, or NULL */
 void settings_folder_chosen(const char *path);   /* the async folder picker's answer */
