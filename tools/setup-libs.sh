@@ -12,12 +12,15 @@
 # then: export PKG_CONFIG_PATH=PREFIX/lib/pkgconfig (and LD_LIBRARY_PATH=PREFIX/lib to run).
 # SETUP_LIBS chooses the libraries (default "sdl3 mt32emu"; "mt32emu" where a package has SDL3,
 # as MSYS2 does). SETUP_MACOS_ARCHS="arm64;x86_64" builds universal macOS libraries for a
-# release, for macOS 11 on unless MACOSX_DEPLOYMENT_TARGET says.
+# release, for macOS 11 on unless MACOSX_DEPLOYMENT_TARGET says. "freetype" in SETUP_LIBS adds a
+# static FreeType without its optional libraries, for a universal build where Homebrew's has one
+# architecture only.
 set -e
 prefix=${1:-tools/libs}
 mkdir -p "$prefix"; prefix=$(cd "$prefix" && pwd)
 sdl_tag=release-3.4.16
 mt_tag=libmt32emu_2_8_3
+ft_tag=VER-2-13-3
 libs=${SETUP_LIBS:-sdl3 mt32emu}
 archs=${SETUP_MACOS_ARCHS:-}
 gen=; command -v ninja >/dev/null 2>&1 && gen="-G Ninja"
@@ -59,4 +62,5 @@ build sdl3 "$sdl_tag" https://github.com/libsdl-org/SDL . -DSDL_TESTS=OFF -DSDL_
   -DSDL_UNIX_CONSOLE_BUILD=$console $sdl_kind
 # shellcheck disable=SC2086
 build mt32emu "$mt_tag" https://github.com/munt/munt mt32emu $mt_kind
+build freetype "$ft_tag" https://github.com/freetype/freetype . -DBUILD_SHARED_LIBS=OFF \n  -DFT_DISABLE_ZLIB=TRUE -DFT_DISABLE_BZIP2=TRUE -DFT_DISABLE_PNG=TRUE -DFT_DISABLE_HARFBUZZ=TRUE -DFT_DISABLE_BROTLI=TRUE
 echo "PKG_CONFIG_PATH=$prefix/lib/pkgconfig"
