@@ -62,5 +62,6 @@ build sdl3 "$sdl_tag" https://github.com/libsdl-org/SDL . -DSDL_TESTS=OFF -DSDL_
   -DSDL_UNIX_CONSOLE_BUILD=$console $sdl_kind
 # shellcheck disable=SC2086
 build mt32emu "$mt_tag" https://github.com/munt/munt mt32emu $mt_kind
-build freetype "$ft_tag" https://github.com/freetype/freetype . -DBUILD_SHARED_LIBS=OFF \n  -DFT_DISABLE_ZLIB=TRUE -DFT_DISABLE_BZIP2=TRUE -DFT_DISABLE_PNG=TRUE -DFT_DISABLE_HARFBUZZ=TRUE -DFT_DISABLE_BROTLI=TRUE
+build freetype "$ft_tag" https://github.com/freetype/freetype . -DBUILD_SHARED_LIBS=OFF \
+  -DFT_DISABLE_ZLIB=TRUE -DFT_DISABLE_BZIP2=TRUE -DFT_DISABLE_PNG=TRUE -DFT_DISABLE_HARFBUZZ=TRUE -DFT_DISABLE_BROTLI=TRUE
 echo "PKG_CONFIG_PATH=$prefix/lib/pkgconfig"
