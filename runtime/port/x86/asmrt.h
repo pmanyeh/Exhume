@@ -97,7 +97,10 @@ extern uint8_t CF, ZF, SF, OF, DF;
    VGA's window (A000:0000 to FFFF, gfx/vga.c, which sets asm_vga_base) goes to the emulated
    card a byte at a time, as the CPU's accesses reached the card over its 8-bit bus: a read loads
    the latches, a write goes through the map mask and the write mode. So translated code that
-   draws to video memory itself (mode X: latched copies, plane writes) does what it did. */
+   draws to video memory itself (mode X: latched copies, plane writes) does what it did.
+   A project's asmgame.h may define ASM_MEMORY_WRITE(address, length) to observe stores
+   (for display-only pixel ownership). It must not alter memory or the emulated registers
+   or flags. Undefined, it adds no work; VGA word/dword stores may notify in parts too. */
 extern uint8_t *asm_vga_base;
 #define ASM_VGA(q) ((uintptr_t)(q) - (uintptr_t)asm_vga_base < 0x10000u)
 #define ASM_VGA_OFF(q) ((uint16_t)((uintptr_t)(q) - (uintptr_t)asm_vga_base))
@@ -122,12 +125,18 @@ static inline uint32_t rd(const uint8_t *p, uint32_t a)
 static inline void wb(uint8_t *p, uint32_t a, uint8_t v)
 {
     uint8_t *q = p + (uint16_t)a;
+#ifdef ASM_MEMORY_WRITE
+    ASM_MEMORY_WRITE(q, 1);
+#endif
     if (ASM_VGA(q)) { vga_write(ASM_VGA_OFF(q), v); return; }
     *q = v;
 }
 static inline void ww(uint8_t *p, uint32_t a, uint16_t v)
 {
     uint8_t *q = p + (uint16_t)a;
+#ifdef ASM_MEMORY_WRITE
+    ASM_MEMORY_WRITE(q, 2);
+#endif
     if (ASM_VGA(q)) { vga_write(ASM_VGA_OFF(q), (uint8_t)v); vga_write((uint16_t)(ASM_VGA_OFF(q) + 1), (uint8_t)(v >> 8)); return; }
     q[0] = (uint8_t)v;
     q[1] = (uint8_t)(v >> 8);
@@ -135,6 +144,9 @@ static inline void ww(uint8_t *p, uint32_t a, uint16_t v)
 static inline void wd(uint8_t *p, uint32_t a, uint32_t v)
 {
     uint8_t *q = p + (uint16_t)a;
+#ifdef ASM_MEMORY_WRITE
+    ASM_MEMORY_WRITE(q, 4);
+#endif
     if (ASM_VGA(q)) { ww(p, a, (uint16_t)v); ww(p, a + 2, (uint16_t)(v >> 16)); return; }
     q[0] = (uint8_t)v;
     q[1] = (uint8_t)(v >> 8);
