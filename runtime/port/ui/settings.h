@@ -58,6 +58,7 @@ int  settings_open(void);           /* 1 while shown */
 void settings_show(int on);
 void settings_key(int key);         /* SET_KEY_* */
 void settings_pointer(int x, int y, int down);   /* in the layer's 640x400 pixels */
+void settings_wheel(int steps);    /* the mouse wheel: rows down (positive) or up */
 int  settings_draw(uint32_t *rgba); /* 640*400 pixels; 0 when not shown */
 int  settings_value(int row);       /* the row's current value (index, 0/1, slider value) */
 void settings_set_value(int row, int value);   /* the row's current value only: nothing is written or applied */

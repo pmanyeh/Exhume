@@ -5,6 +5,7 @@
        T move X Y        the pointer to X, Y of the game's 320 by 200 screen
        T click X Y left|right|middle
        T mdown X Y left|right|middle    press a button there    T mup X Y left|right|middle   release it
+       T wheel N         the mouse wheel, N notches (down positive, -9..9)
        T look DX DY      relative motion, as a captured mouse gives (mouse-look), DX right and
                          DY down in host pixels, -1000..1000
        T wclick X Y      a left click at X, Y of the window, in its own coordinates (0..10000),
@@ -40,7 +41,7 @@ uint32_t pit_bios_ticks(void);
 uint32_t pit_paused_ms(void);
 void port_test_fault(void);
 
-enum { EV_KEY, EV_DOWN, EV_UP, EV_MOVE, EV_CLICK, EV_LOOK, EV_MDOWN, EV_MUP, EV_WCLICK, EV_WDOWN, EV_FAULT, EV_CHEAT };
+enum { EV_KEY, EV_DOWN, EV_UP, EV_MOVE, EV_CLICK, EV_LOOK, EV_MDOWN, EV_MUP, EV_WCLICK, EV_WDOWN, EV_FAULT, EV_CHEAT, EV_WHEEL };
 struct ev { uint32_t ms; int kind, code, x, y, button; };
 static struct ev *evs;
 static int nev, next;
@@ -126,6 +127,10 @@ int inscript_load(const char *path, void (*key)(uint8_t), void (*pointer)(const 
             if (sscanf(buf, "%lu %31s %d %d", &ms, word, &e.x, &e.y) < 4
                 || e.x < -1000 || e.x > 1000 || e.y < -1000 || e.y > 1000)
                 return bad(f, path, line, "a motion -1000..1000 -1000..1000");
+        } else if (!strcmp(word, "wheel")) {
+            e.kind = EV_WHEEL;
+            if (sscanf(buf, "%lu %31s %d", &ms, word, &e.y) < 3 || e.y < -9 || e.y > 9 || e.y == 0)
+                return bad(f, path, line, "notches -9..9, not 0, down positive");
         } else if (!strcmp(word, "fault")) {
 #ifdef __EMSCRIPTEN__
             return bad(f, path, line, "fault: not in the web build, which has no fault handlers");
@@ -145,7 +150,7 @@ int inscript_load(const char *path, void (*key)(uint8_t), void (*pointer)(const 
             if ((err = cheat_add(t)) != NULL) return bad(f, path, line, err);
             e.kind = EV_CHEAT;
         } else
-            return bad(f, path, line, "an event: key, down, up, move, click, mdown, mup, look, wclick, wdown, fault or cheat");
+            return bad(f, path, line, "an event: key, down, up, move, click, mdown, mup, look, wheel, wclick, wdown, fault or cheat");
         if (nev && e.ms < evs[nev - 1].ms) return bad(f, path, line, "times must not go back");
         if (nev == cap) {
             struct ev *m = realloc(evs, (size_t)(cap = cap ? cap * 2 : 32) * sizeof *evs);
@@ -200,6 +205,14 @@ void inscript_tick(void)
         case EV_UP: send_key(e->code, 0); break;
         case EV_MOVE: send_ptr(PLAT_POINTER_MOVE, e, 0); break;
         case EV_LOOK: send_look(e); break;
+        case EV_WHEEL: {
+            PlatPointer p;
+            memset(&p, 0, sizeof p);
+            p.type = PLAT_POINTER_WHEEL;
+            p.dy = (float)e->y;
+            ptr_fn(&p);
+            break;
+        }
         case EV_WCLICK: plat_window_click((float)e->x, (float)e->y, 1); break;
         case EV_WDOWN: plat_window_click((float)e->x, (float)e->y, 0); break;
         case EV_MDOWN: send_ptr(PLAT_POINTER_MOVE, e, 0); send_ptr(PLAT_POINTER_DOWN, e, (unsigned)e->button); break;

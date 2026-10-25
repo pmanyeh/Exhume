@@ -477,6 +477,18 @@ static void set_tab(int t, int bar)
 
 /* ---- input ---- */
 
+/* The mouse wheel: the rows scroll by steps (down positive), the selection kept among those shown. */
+void settings_wheel(int steps)
+{
+    int n = tab_count(cur_tab), most = n > VISIBLE ? n - VISIBLE : 0;
+    if (!shown || !steps) return;
+    top += steps;
+    if (top > most) top = most;
+    if (top < 0) top = 0;
+    if (sel >= 0 && sel < top) sel = top;
+    if (sel >= top + VISIBLE) sel = top + VISIBLE - 1;
+}
+
 void settings_key(int key)
 {
     int n = tab_count(cur_tab);

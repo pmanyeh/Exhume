@@ -48,7 +48,8 @@
    window's scale, for the mickeys of int 33h function 0Bh. absolute is set when x and y are
    where the host's pointer is and the game's cursor should follow it; it is clear while the
    pointer is captured, when only dx and dy mean anything. */
-enum { PLAT_POINTER_MOVE = 0, PLAT_POINTER_DOWN = 1, PLAT_POINTER_UP = 2 };
+/* PLAT_POINTER_WHEEL: the mouse wheel turned, dy notches, down positive (x, y where the pointer is) */
+enum { PLAT_POINTER_MOVE = 0, PLAT_POINTER_DOWN = 1, PLAT_POINTER_UP = 2, PLAT_POINTER_WHEEL = 3 };
 enum { PLAT_BUTTON_LEFT = 1, PLAT_BUTTON_RIGHT = 2, PLAT_BUTTON_MIDDLE = 4 };
 typedef struct PlatPointer {
     int type;               /* PLAT_POINTER_MOVE, _DOWN or _UP */

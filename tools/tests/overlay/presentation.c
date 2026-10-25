@@ -22,6 +22,7 @@ int settings_open(void) { return shown; }
 void settings_show(int on) { shown = on; }
 void settings_key(int k) { (void)k; }
 void settings_pointer(int x, int y, int down) { (void)x; (void)y; (void)down; }
+void settings_wheel(int steps) { (void)steps; }
 void settings_folder_chosen(const char *p) { (void)p; }
 void port_pause(int on) { (void)on; }
 void port_crash_handlers(void) { }

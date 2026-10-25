@@ -367,6 +367,11 @@ void plat_pointer_event(const PlatPointer *ev)
     PlatPointer p;
     if (!hooks || !hooks->pointer) return;
     p = *ev;
+    if (settings_open() && p.type == PLAT_POINTER_WHEEL) {
+        settings_wheel((int)p.dy);
+        sync_open();
+        return;
+    }
     if (settings_open()) {
         settings_pointer((int)(p.x * SET_W / 320), (int)(p.y * SET_H / 200),
                          p.type != PLAT_POINTER_UP && (p.buttons & PLAT_BUTTON_LEFT));
@@ -714,6 +719,26 @@ static int loop_step(void)
             }
             to_game(&p);
             break;
+        case SDL_EVENT_MOUSE_WHEEL: {
+            /* the wheel: notches, down positive (a flipped wheel reported so is turned back); the
+               settings screen scrolls its rows, else the game has it where the pointer is */
+            float d = e.wheel.y * (e.wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -1.0f : 1.0f);
+            int steps = d > 0 ? -1 : d < 0 ? 1 : 0;
+            if (!steps || !hooks->pointer) break;
+            if (settings_open()) {
+                settings_wheel(steps);
+                sync_open();
+                break;
+            }
+            memset(&p, 0, sizeof p);
+            p.type = PLAT_POINTER_WHEEL;
+            p.x = last_x; p.y = last_y;
+            p.dy = (float)steps;
+            p.buttons = buttons;
+            p.absolute = !locked && !captured;
+            to_game(&p);
+            break;
+        }
         case SDL_EVENT_WINDOW_FOCUS_LOST:
 #ifdef __EMSCRIPTEN__
         case SDL_EVENT_WINDOW_HIDDEN:       /* the page hidden (another tab): the browser's focus may stay */
