@@ -3,8 +3,8 @@
        T key NAME        press and release
        T down NAME       press          T up NAME     release
        T move X Y        the pointer to X, Y of the game's 320 by 200 screen
-       T click X Y left|right
-       T mdown X Y left|right    press a button there    T mup X Y left|right   release it
+       T click X Y left|right|middle
+       T mdown X Y left|right|middle    press a button there    T mup X Y left|right|middle   release it
        T look DX DY      relative motion, as a captured mouse gives (mouse-look), DX right and
                          DY down in host pixels, -1000..1000
        T wclick X Y      a left click at X, Y of the window, in its own coordinates (0..10000),
@@ -113,9 +113,9 @@ int inscript_load(const char *path, void (*key)(uint8_t), void (*pointer)(const 
             btn[0] = 0;
             if (sscanf(buf, "%lu %31s %d %d %15s", &ms, word, &e.x, &e.y, btn) < 4
                 || e.x < 0 || e.x > 319 || e.y < 0 || e.y > 199
-                || (e.kind != EV_MOVE && strcmp(btn, "left") && strcmp(btn, "right")))
-                return bad(f, path, line, "a position 0..319 0..199 (and for a click, left or right)");
-            e.button = !strcmp(btn, "right") ? PLAT_BUTTON_RIGHT : PLAT_BUTTON_LEFT;
+                || (e.kind != EV_MOVE && strcmp(btn, "left") && strcmp(btn, "right") && strcmp(btn, "middle")))
+                return bad(f, path, line, "a position 0..319 0..199 (and for a click, left, right or middle)");
+            e.button = !strcmp(btn, "right") ? PLAT_BUTTON_RIGHT : !strcmp(btn, "middle") ? PLAT_BUTTON_MIDDLE : PLAT_BUTTON_LEFT;
         } else if (!strcmp(word, "wclick") || !strcmp(word, "wdown")) {
             e.kind = !strcmp(word, "wclick") ? EV_WCLICK : EV_WDOWN;
             if (sscanf(buf, "%lu %31s %d %d", &ms, word, &e.x, &e.y) < 4
