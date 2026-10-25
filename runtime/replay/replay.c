@@ -613,14 +613,18 @@ static void rp_start_on(void)
             return;
     }
     if (rp_mode == RP_OFF) {
+#ifndef __TURBOC__
+        log_fd = OPEN_RECORD(O_RDWR | O_CREAT | O_TRUNC | O_BINARY, 0x180);
+#else
         log_fd = OPEN_RECORD(O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0x180);
+#endif
         if (log_fd < 0) return;
         rp_mode = RP_RECORD;
 #ifndef __TURBOC__
         if (enhance_on || cheat_scripted()) {
             /* format 5: the enhancements the session is played with, as one chunk of stream 9
                after the header (enhance.c reads it before the game starts); 6 when the input
-               script has cheats, which follow as chunks of stream 10 (rp_cheat_put) */
+   script has cheats, which follow as chunks of stream 10 (rp_cheat_put) */
             char names[512], h5[HDR_LEN];
             unsigned n = (unsigned)strlen(enhance_names(enhance_on, names, sizeof names));
             unsigned char c[3];
@@ -666,6 +670,28 @@ void rp_cheat_put(uint32_t poll, const char *text)
     unsigned char c[3 + 4 + 128];
     unsigned n = (unsigned)strlen(text);
     if (rp_mode != RP_RECORD || log_fd < 0) return;
+    /* A live menu action may be the first cheat, long after recording began.
+       Promote 4/5 to 6 once. For 4 insert an empty initial enhancement chunk;
+       buffered input runs remain untouched and the old byte stream is shifted intact. */
+    {
+        unsigned char version, buf[4096], empty[3] = {9, 0, 0};
+        long end = lseek(log_fd, 0L, 2), from, count;
+        lseek(log_fd, 4L, 0);
+        if (read(log_fd, &version, 1) != 1) return;
+        if (version == 4) {
+            from = end;
+            while (from > HDR_LEN) {
+                count = from - HDR_LEN; if (count > sizeof buf) count = sizeof buf;
+                from -= count; lseek(log_fd, from, 0);
+                if (read(log_fd, buf, (unsigned)count) != count) return;
+                lseek(log_fd, from + 3, 0);
+                if (write(log_fd, buf, (unsigned)count) != count) return;
+            }
+            lseek(log_fd, HDR_LEN, 0); write(log_fd, empty, 3); end += 3;
+        }
+        if (version < 6) { version = 6; lseek(log_fd, 4L, 0); write(log_fd, &version, 1); }
+        lseek(log_fd, end, 0);
+    }
     if (n > 128) n = 128;
     c[0] = S_CHEAT;
     c[1] = (unsigned char)(n + 4);

@@ -8,8 +8,8 @@
 #include <stdint.h>
 
 /* SET_TAB_TEXT, the game's language and text, is shown only when the game's table has rows for it */
-enum { SET_TAB_SOUND, SET_TAB_CONTROLS, SET_TAB_DISPLAY, SET_TAB_ENHANCE, SET_TAB_GAME, SET_TAB_TEXT, SET_TABS };
-enum { SET_CYCLE, SET_BOOL, SET_SLIDER, SET_FOLDER };
+enum { SET_TAB_SOUND, SET_TAB_CONTROLS, SET_TAB_DISPLAY, SET_TAB_ENHANCE, SET_TAB_GAME, SET_TAB_TEXT, SET_TAB_CHEATS, SET_TABS };
+enum { SET_CYCLE, SET_BOOL, SET_SLIDER, SET_FOLDER, SET_ACTION };
 
 struct setting {
     int tab;
@@ -54,6 +54,8 @@ enum { SET_KEY_UP, SET_KEY_DOWN, SET_KEY_LEFT, SET_KEY_RIGHT, SET_KEY_TAB, SET_K
    settings file. The table is copied; the strings and functions its rows point to must outlive
    the screen. */
 void settings_init(const char *home, const struct setting *table, int n, const char *title);
+/* Route one generated enhancement row; a live callback requests game-thread work. */
+void settings_enhancement(int bit, int tab, void (*apply)(int));
 int  settings_open(void);           /* 1 while shown */
 void settings_show(int on);
 void settings_key(int key);         /* SET_KEY_* */

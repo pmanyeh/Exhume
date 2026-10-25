@@ -28,11 +28,18 @@
 #define PORT_NAME "port"
 #endif
 
-#define MAXCHEATS 256
+#define MAXCHEATS 4096
 #define CHEAT_LEN 128
 #define MAXARGS 12
 
 static const struct cheat_game *game;
+static const struct cheat_game *menu;
+#define MENU_QUEUE 32
+static char menu_queue[MENU_QUEUE][CHEAT_LEN];
+static int menu_read, menu_write;
+static atomic_flag menu_busy = ATOMIC_FLAG_INIT;
+static void menu_lock(void) { while (atomic_flag_test_and_set_explicit(&menu_busy, memory_order_acquire)) {} }
+static void menu_unlock(void) { atomic_flag_clear_explicit(&menu_busy, memory_order_release); }
 static char text[MAXCHEATS][CHEAT_LEN];
 static uint32_t at[MAXCHEATS];          /* replaying: the safe point each runs at */
 static int ncheats, done;
@@ -42,6 +49,15 @@ static uint32_t polls;                  /* the safe points so far */
 static char why[256];
 
 void cheat_init(const struct cheat_game *g) { game = g; }
+void cheat_menu_init(const struct cheat_game *m) { menu = m; }
+int cheat_menu_request(const char *t)
+{
+    int next;
+    if (!menu || !t || strlen(t) >= CHEAT_LEN || replaying) return -1;
+    menu_lock(); next = (menu_write + 1) % MENU_QUEUE;
+    if (next == menu_read) { menu_unlock(); return -1; }
+    strcpy(menu_queue[menu_write], t); menu_write = next; menu_unlock(); return 0;
+}
 
 int cheat_allowed(void)
 {
@@ -83,30 +99,35 @@ static int split(char *line, char *argv[])
 }
 
 /* T's command, checked (run 0) or run (run 1): NULL, or what is wrong */
-static const char *apply(const char *t, int run)
+static const char *apply_table(const struct cheat_game *table, const char *t, int run)
 {
     char buf[CHEAT_LEN], *argv[MAXARGS];
     const char *e;
     int argc, i;
-    if (!game) return "this build has no cheats";
+    if (!table) return "this build has no cheats";
     if (strlen(t) >= sizeof buf) return "too long";
     strcpy(buf, t);
     if ((argc = split(buf, argv)) < 0) return "too many words";
     if (argc == 0) return "a command";
-    for (i = 0; i < game->ncmds; i++)
-        if (!strcmp(game->cmds[i].name, argv[0])) break;
-    if (i == game->ncmds) {
+    for (i = 0; i < table->ncmds; i++)
+        if (!strcmp(table->cmds[i].name, argv[0])) break;
+    if (i == table->ncmds) {
         size_t k = (size_t)snprintf(why, sizeof why, "no such cheat %s (", argv[0]);
-        for (i = 0; i < game->ncmds && k < sizeof why; i++)
-            k += (size_t)snprintf(why + k, sizeof why - k, "%s%s", i ? ", " : "", game->cmds[i].name);
+        for (i = 0; i < table->ncmds && k < sizeof why; i++)
+            k += (size_t)snprintf(why + k, sizeof why - k, "%s%s", i ? ", " : "", table->cmds[i].name);
         if (k < sizeof why) snprintf(why + k, sizeof why - k, ")");
         return why;
     }
-    if ((e = game->cmds[i].fn(argc - 1, argv + 1, run)) != NULL) {
-        snprintf(why, sizeof why, "%s: %s (%s %s)", argv[0], e, argv[0], game->cmds[i].usage);
+    if ((e = table->cmds[i].fn(argc - 1, argv + 1, run)) != NULL) {
+        snprintf(why, sizeof why, "%s: %s (%s %s)", argv[0], e, argv[0], table->cmds[i].usage);
         return why;
     }
     return NULL;
+}
+static const char *apply(const char *t, int run)
+{
+    if (menu && !apply_table(menu, t, 0)) return apply_table(menu, t, run);
+    return apply_table(game, t, run);
 }
 
 const char *cheat_add(const char *t)
@@ -152,12 +173,6 @@ int cheat_from_recording(const char *path)
         fclose(f);
         return 0;
     }
-    if (!cheat_allowed()) {
-        fclose(f);
-        fprintf(stderr, PORT_NAME ": cheat: %s was recorded with cheats, a test's; it replays only with "
-                "EXHUME_TEST_CHEATS=1\n", path);
-        return -1;
-    }
     while (fread(c, 1, 3, f) == 3) {
         n = c[1] | (unsigned)c[2] << 8;
         if (c[0] != 10) {
@@ -172,6 +187,11 @@ int cheat_from_recording(const char *path)
         at[ncheats] = b[0] | (uint32_t)b[1] << 8 | (uint32_t)b[2] << 16 | (uint32_t)b[3] << 24;
         memcpy(text[ncheats], b + 4, n - 4);
         text[ncheats][n - 4] = 0;
+        if (!cheat_allowed() && apply_table(menu, text[ncheats], 0)) {
+            fclose(f);
+            fprintf(stderr, PORT_NAME ": cheat: test commands require EXHUME_TEST_CHEATS=1\n");
+            return -1;
+        }
         ncheats++;
     }
     fclose(f);
@@ -188,7 +208,7 @@ static void run_one(const char *t)
 
 void port_cheat_point(void)
 {
-    if (!ncheats || !game) return;
+    if (!game) return;
     polls++;
     if (replaying) {
         while (done < ncheats && at[done] == polls) run_one(text[done++]);
@@ -197,5 +217,16 @@ void port_cheat_point(void)
     while (done < atomic_load(&due) && game->ready()) {
         rp_cheat_put(polls, text[done]);
         run_one(text[done++]);
+    }
+    if (menu && menu->ready()) {
+        char request[CHEAT_LEN];
+        int have;
+        menu_lock(); have = menu_read != menu_write;
+        if (have) { strcpy(request, menu_queue[menu_read]); menu_read = (menu_read + 1) % MENU_QUEUE; }
+        menu_unlock();
+        if (have) {
+            if (!apply_table(menu, request, 0)) { rp_cheat_put(polls, request); apply_table(menu, request, 1); }
+            else fprintf(stderr, PORT_NAME ": menu: refused command\n");
+        }
     }
 }

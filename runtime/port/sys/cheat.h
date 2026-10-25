@@ -1,8 +1,10 @@
-/* cheat.h: test-only cheats, an input script's `cheat` lines (cheat.c). A test sets up a game
+/* cheat.h: recorded commands, an input script's test-only `cheat` lines (cheat.c). A test sets up a game
    state that scripted play cannot reach cheaply (where the player is, what they carry, their
    statistics), saves it, and a real test starts from that saved game. The game supplies its
    commands in a table and the test of whether a cheat may run now; cheat.c parses, gates,
-   records and replays them, and runs each at the game's safe point (port_cheat_point). */
+   records and replays them, and runs each at the game's safe point (port_cheat_point).
+   A game may separately register public menu commands: these alone bypass the test gate,
+   including when a player replays a recording which contains only public menu commands. */
 #ifndef CHEAT_H
 #define CHEAT_H
 #include <stdint.h>
@@ -27,6 +29,10 @@ struct cheat_game {
 
 /* The game's table, before the input script is read (main). */
 void cheat_init(const struct cheat_game *game);
+/* Optional public menu commands. Only these may be queued without the test gate.
+   Runs on the game thread at the same recorded safe points as scripted commands. */
+void cheat_menu_init(const struct cheat_game *menu);
+int cheat_menu_request(const char *text);
 /* Whether cheats are allowed: EXHUME_TEST_CHEATS=1 in the environment, and never in the web
    build (a player's page has no environment to set). */
 int cheat_allowed(void);
@@ -41,7 +47,7 @@ int cheat_scripted(void);
    points; 0, or -1 after a message (cheats not allowed, or the file is bad). */
 int cheat_from_recording(const char *path);
 /* The game's safe point, on its own thread, once a pass of its main loop (MAINLOOP.C, port
-   only). Nothing at all unless the script has cheats or the replay's recording does. */
+   only). Counts from the first pass, so commands first requested later can be replayed. */
 void port_cheat_point(void);
 /* A number: decimal, or hex with 0x; lo..hi. 0, or -1. */
 int cheat_num(const char *s, long lo, long hi, long *v);

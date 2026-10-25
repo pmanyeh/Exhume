@@ -78,7 +78,7 @@ static int same_folder(const char *a, const char *b)
 #define FOOTER "F11 opens this at any time \xC2\xB7 Esc closes"
 #endif
 
-static const char *const tab_name[SET_TABS] = { "Sound", "Controls", "Display", "Enhancements", "Game", "Language" };
+static const char *const tab_name[SET_TABS] = { "Sound", "Controls", "Display", "Enhancements", "Game", "Language", "Cheats" };
 
 static const char *home_dir = "";
 static const char *title_text = "";
@@ -244,6 +244,9 @@ static void change(int r, int dir)
     struct setting *s = &rows[r];
     int n, step;
     switch (s->kind) {
+    case SET_ACTION:
+        if (s->apply) s->apply(1);
+        return;
     case SET_CYCLE:
         n = offered(s);
         if (n < 1) return;
@@ -380,6 +383,19 @@ const char *settings_help(int row)
     return row >= 0 && row < nrows && help[row][0] ? help[row] : NULL;
 }
 
+void settings_enhancement(int bit, int tab, void (*apply)(int))
+{
+    int i;
+    for (i = 0; i < nrows; i++) if (enh_bit[i] == bit) {
+        rows[i].tab = tab;
+        rows[i].apply = apply;
+        rows[i].restart = apply == NULL;
+        value[i] = start_value[i] = (enhance_on >> bit) & 1u;
+        pending_enh = (pending_enh & ~(1u << bit)) | (enhance_on & (1u << bit));
+        changed[i] = 0;
+    }
+}
+
 /* ---- the tabs and their rows ---- */
 
 static int tab_count(int tab)
@@ -416,7 +432,7 @@ EMSCRIPTEN_KEEPALIVE const char *web_test_settings(int tab)
 #endif
 
 /* The tab bar: every tab but Language, which a game without its rows does not have */
-static int tab_shown(int tab) { return tab != SET_TAB_TEXT || tab_count(tab) > 0; }
+static int tab_shown(int tab) { return (tab != SET_TAB_TEXT && tab != SET_TAB_CHEATS) || tab_count(tab) > 0; }
 
 static int tabs_shown(void)
 {
@@ -667,6 +683,9 @@ static void value_text(const struct setting *s, int r, char *out, size_t n)
 {
     size_t len;
     switch (s->kind) {
+    case SET_ACTION:
+        snprintf(out, n, "%s", tr("Run"));
+        break;
     case SET_CYCLE:
         snprintf(out, n, "< %s >", value[r] < count_names(s) ? tr(s->names[shown_value(r)]) : "?");
         break;

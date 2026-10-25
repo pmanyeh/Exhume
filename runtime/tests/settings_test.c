@@ -280,7 +280,7 @@ int main(void)
         int k;
         settings_init("h", L, 1, "Test");
         settings_show(1);
-        for (k = 0; k < SET_TABS - 1; k++) settings_key(SET_KEY_TAB);   /* the five shown: round to Sound */
+        for (k = 0; k < 5; k++) settings_key(SET_KEY_TAB);   /* optional Language and Cheats are hidden */
         CHECK(settings_value(0) == 5, "without Language rows, Tab walks the five tabs back to Sound");
         settings_key(SET_KEY_DOWN);
         settings_set_text(&hooks);
@@ -294,6 +294,22 @@ int main(void)
         settings_pointer(TITLE_X + 5 * ((SET_W - 2 * TITLE_X) / 6) + 10, TAB_Y + 5, 0);
         settings_key(SET_KEY_ENTER);
         CHECK(settings_value(1) == 1, "with them, the sixth tab is Language and its row takes Enter");
+        settings_show(0);
+    }
+    {
+        static const struct setting actions[] = {
+            { .tab=SET_TAB_CHEATS, .label="Rescue", .kind=SET_ACTION, .apply=apply_vol }
+        };
+        int k, before;
+        enhance_init(F, 2, "test"); enhance_on = 1;
+        settings_init("h", actions, 1, "Test");
+        settings_enhancement(0, SET_TAB_CHEATS, apply_vol);
+        settings_show(1);
+        for(k=0;k<5;k++) settings_key(SET_KEY_TAB);
+        before=applies;settings_key(SET_KEY_ENTER);
+        CHECK(applies==before+1 && applied==1 && settings_value(0)==0, "action runs once without a persistent value");
+        settings_key(SET_KEY_DOWN);settings_key(SET_KEY_ENTER);
+        CHECK(applied==0 && settings_value(1)==0 && !settings_note(1), "routed enhancement applies live without restart");
         settings_show(0);
     }
     printf("%d failed\n", fails);
