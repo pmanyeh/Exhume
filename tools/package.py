@@ -108,7 +108,7 @@ def licence_texts(dest, libs, strict, extra=()):
         if not found: missing.append(name); continue
         os.makedirs(os.path.join(out, name), exist_ok=True)
         shutil.copy(found, os.path.join(out, name, os.path.basename(found)))
-    for name, path in extra:
+    for name, path in list(extra) + K.licences:
         os.makedirs(os.path.join(out, name), exist_ok=True)
         dst = os.path.join(out, name, os.path.basename(path))
         # an MSYS2 package's licence folder can hold folders (libiconv's libcharset)

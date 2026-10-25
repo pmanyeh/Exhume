@@ -69,6 +69,8 @@ matched decompilation (docs/port.md). Every path is relative to [project] root u
                  tools/dist/README-dist.txt)
     texts        project files copied in as NAME.txt (default LICENSE, NOTICE,
                  THIRD-PARTY-NOTICES)
+    licences     NAME = "path": more licence texts for licenses/NAME/, in every package, for
+                 libraries a build may link statically (no shared library brings their text)
     copyright    the app's copyright line
     category     the app's category (default public.app-category.games)
     min_macos    the oldest macOS the app runs on (default 11.0)
@@ -328,6 +330,7 @@ def package(cfg):
         launcher=launcher,
         readme=_path(cfg, k.get('readme', 'tools/dist/README-dist.txt')),
         texts=list(k.get('texts', ['LICENSE', 'NOTICE', 'THIRD-PARTY-NOTICES'])),
+        licences=[(n, _path(cfg, p)) for n, p in k.get('licences', {}).items()],
         copyright=k.get('copyright', ''),
         category=k.get('category', 'public.app-category.games'),
         min_macos=k.get('min_macos', '11.0'),

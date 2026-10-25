@@ -167,6 +167,7 @@ The players' packages (tools/package.py, `make package`; docs/port.md, "Packages
 - `bundle_id`, `category`, `min_macos`, `copyright`: the app's `Info.plist`.
 - `launcher`: the Linux package's start script, `.desktop` and `.png` (default `name` in lower case).
 - `readme`: the players' README (default `tools/dist/README-dist.txt`), its `@VERSION@` and `@MACOS_OPEN@` filled in; `texts`: the project files copied in as `.txt` (default `LICENSE`, `NOTICE`, `THIRD-PARTY-NOTICES`).
+- `licences`: `NAME = "path"`, more licence texts copied into every package's `licenses/NAME/`, for libraries a build may link statically, which no bundled shared library brings in (UW1: FreeType on macOS).
 - `icon_dir`, `icon`: the icon's two SVG sources, `ICON.svg` and `ICON-small.svg`, and the files tools/icons.py writes beside them (default `tools/dist/icon`, `launcher`); `icon_header`: the window icon as C, for `PLAT_ICON` (default `[port] dir/platform/BACKEND/icon.h`).
 - `env`: the prefix of the variables tools/package.py reads (default `name` in upper case): `ENV_CODESIGN_IDENTITY`, a Developer ID identity to sign the macOS app with, and `ENV_NOTARISED=1`.
 
