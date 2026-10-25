@@ -736,8 +736,20 @@ int settings_draw(uint32_t *px)
             s->preview(px, LABEL_X, HELP_Y + (help[r][0] ? GLYPH_H : 0), SET_W - 2 * LABEL_X,
                        (HELP_LINES - (help[r][0] ? 1 : 0)) * GLYPH_H, value[r]);
     }
-    if (top > 0) text(px, SET_W - 28, ROW_Y - 18, rgb(C_DIM), "^", -1);
-    if (top + VISIBLE < n) text(px, SET_W - 28, ROW_Y + ROW_H * VISIBLE, rgb(C_DIM), "v", -1);
+    if (n > VISIBLE) {
+        /* more rows than fit: a scroll bar right of the rows, its thumb the part shown, and the
+           footer's right end says how many are below (the ^ and v alone were missed) */
+        int track = ROW_H * VISIBLE - 2, thumb = track * VISIBLE / n, at = track * top / n;
+        char more[64];
+        fill(px, SET_W - 9, ROW_Y, 4, track, rgb(C_BORDER));
+        fill(px, SET_W - 9, ROW_Y + at, 4, thumb > 8 ? thumb : 8, rgb(C_SELECT));
+        if (top > 0) text(px, SET_W - 28, ROW_Y - 18, rgb(C_SELECT), "^", -1);
+        if (top + VISIBLE < n) {
+            text(px, SET_W - 28, ROW_Y + ROW_H * VISIBLE, rgb(C_SELECT), "v", -1);
+            snprintf(more, sizeof more, tr("v %d more below"), n - top - VISIBLE);
+            text(px, SET_W - 16 - text_width(more), FOOT_Y, rgb(C_SELECT), more, -1);
+        }
+    }
     if (notice[0]) text(px, LABEL_X, FOOT_Y - 24, rgb(C_SELECT), notice, 76);
     text(px, LABEL_X, FOOT_Y, rgb(C_DIM), FOOTER, -1);
     return 1;
