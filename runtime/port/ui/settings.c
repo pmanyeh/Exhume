@@ -67,6 +67,10 @@ static int same_folder(const char *a, const char *b)
 #define HELP_LINES 3
 #define HELP_CHARS 72                   /* a line of help: clear of the scroll marker at x 612 */
 #define FOOT_Y 368
+#define KEYS_X 216                      /* the Keys tab: what a key does, after the key */
+#define LINE_H 18                       /* and its lines, as many as fit above the footer */
+#define LINES_SHOWN ((FOOT_Y - 26 - ROW_Y) / LINE_H)    /* clear of the scroll bar's v above the footer */
+#define TAB_PAD 12                      /* a tab's least room beside its name */
 
 /* macOS gives F11 to the desktop (Show Desktop) unless that shortcut is turned off, so the backend
    takes Cmd+, there too, and that is the key the footer names */
@@ -78,7 +82,8 @@ static int same_folder(const char *a, const char *b)
 #define FOOTER "F11 opens this at any time \xC2\xB7 Esc closes"
 #endif
 
-static const char *const tab_name[SET_TABS] = { "Sound", "Controls", "Display", "Enhancements", "Game", "Language", "Cheats" };
+static const char *const tab_name[SET_TABS] = { "Sound", "Controls", "Display", "Enhancements", "Game", "Language", "Cheats",
+                                                 "Keys" };
 
 static const char *home_dir = "";
 static const char *title_text = "";
@@ -103,8 +108,28 @@ static int was_down;
 static char notice[96];                   /* a line under the rows: why a folder was refused */
 
 static const struct settings_text *xl;   /* the game's words, settings_set_text */
+static int (*help_lines)(const struct settings_line **out);   /* the Keys tab's, settings_set_help */
+static int help_top;                      /* its first line shown */
 
 void settings_set_text(const struct settings_text *t) { xl = t; }
+void settings_set_help(int (*lines)(const struct settings_line **out)) { help_lines = lines; }
+
+/* the Keys tab's lines, into *OUT; how many */
+static int help_page(const struct settings_line **out)
+{
+    int n = help_lines ? help_lines(out) : 0;
+    return n > 0 ? n : 0;
+}
+
+/* help_top kept to the lines there are */
+static void help_scroll(int by)
+{
+    const struct settings_line *l;
+    int n = help_page(&l), most = n > LINES_SHOWN ? n - LINES_SHOWN : 0;
+    help_top += by;
+    if (help_top > most) help_top = most;
+    if (help_top < 0) help_top = 0;
+}
 
 /* S as the screen shows it: the game's words for it, else S */
 static const char *tr(const char *s)
@@ -431,36 +456,47 @@ EMSCRIPTEN_KEEPALIVE const char *web_test_settings(int tab)
 }
 #endif
 
-/* The tab bar: every tab but Language, which a game without its rows does not have */
-static int tab_shown(int tab) { return (tab != SET_TAB_TEXT && tab != SET_TAB_CHEATS) || tab_count(tab) > 0; }
-
-static int tabs_shown(void)
+/* The tab bar: every tab but Language and Cheats, which a game without their rows does not have,
+   and Keys, which one without its lines does not */
+static int tab_shown(int tab)
 {
-    int t, n = 0;
-    for (t = 0; t < SET_TABS; t++) n += tab_shown(t);
-    return n;
+    if (tab == SET_TAB_HELP) return help_lines != NULL;
+    return (tab != SET_TAB_TEXT && tab != SET_TAB_CHEATS) || tab_count(tab) > 0;
 }
 
-/* a tab's width: the bar's, shared out (TAB_W at most) */
-static int tab_w(void)
+static int text_width(const char *s);
+
+/* Where each shown tab is on the bar (x) and how wide (w; 0 for one not shown): its name's width
+   and TAB_PAD, then what is left of the bar shared out equally, TAB_W at most where the name
+   allows; a bar too narrow for the names shrinks each in proportion. */
+static void tab_layout(int *x, int *w)
 {
-    int w = (SET_W - 2 * TITLE_X) / tabs_shown();
-    return w < TAB_W ? w : TAB_W;
+    int t, need[SET_TABS], sum = 0, n = 0, bar = SET_W - 2 * TITLE_X, at = TITLE_X;
+    for (t = 0; t < SET_TABS; t++) {
+        need[t] = tab_shown(t) ? text_width(tab_name[t]) + TAB_PAD : 0;
+        sum += need[t];
+        n += need[t] > 0;
+    }
+    for (t = 0; t < SET_TABS; t++) {
+        if (!need[t]) w[t] = 0;
+        else if (sum > bar) w[t] = need[t] * bar / sum;
+        else {
+            w[t] = need[t] + (bar - sum) / n;
+            if (w[t] > TAB_W && need[t] <= TAB_W) w[t] = TAB_W;
+            else if (w[t] > TAB_W) w[t] = need[t];
+        }
+        x[t] = at;
+        at += w[t];
+    }
 }
 
-/* a shown tab's place on the bar, and the tab at a place (or -1) */
-static int tab_place(int tab)
+/* the shown tab under the pointer at X on the bar, or -1 */
+static int tab_at_x(int px)
 {
-    int t, n = 0;
-    for (t = 0; t < tab; t++) n += tab_shown(t);
-    return n;
-}
-
-static int tab_at(int place)
-{
-    int t;
+    int x[SET_TABS], w[SET_TABS], t;
+    tab_layout(x, w);
     for (t = 0; t < SET_TABS; t++)
-        if (tab_shown(t) && place-- == 0) return t;
+        if (w[t] && px >= x[t] && px < x[t] + w[t]) return t;
     return -1;
 }
 
@@ -489,7 +525,18 @@ static void set_tab(int t, int bar)
     cur_tab = (t % SET_TABS + SET_TABS) % SET_TABS;
     sel = !bar && tab_count(cur_tab) ? 0 : -1;
     top = 0;
+    help_top = 0;
 }
+
+int settings_show_tab(int tab)
+{
+    if (tab < 0 || tab >= SET_TABS || !tab_shown(tab)) return 0;
+    settings_show(1);
+    set_tab(tab, 1);
+    return 1;
+}
+
+int settings_tab(void) { return cur_tab; }
 
 /* ---- input ---- */
 
@@ -498,6 +545,10 @@ void settings_wheel(int steps)
 {
     int n = tab_count(cur_tab), most = n > VISIBLE ? n - VISIBLE : 0;
     if (!shown || !steps) return;
+    if (cur_tab == SET_TAB_HELP) {
+        help_scroll(steps);
+        return;
+    }
     top += steps;
     if (top > most) top = most;
     if (top < 0) top = 0;
@@ -511,6 +562,11 @@ void settings_key(int key)
     int r = sel >= 0 ? tab_row(cur_tab, sel) : -1;
     if (!shown) return;
     notice[0] = 0;
+    /* the Keys tab has no rows: Up and Down scroll its lines, the bar keeps the selection */
+    if (cur_tab == SET_TAB_HELP && (key == SET_KEY_UP || key == SET_KEY_DOWN)) {
+        help_scroll(key == SET_KEY_UP ? -1 : 1);
+        return;
+    }
     switch (key) {
     case SET_KEY_UP:
         sel = sel < 0 ? n - 1 : sel - 1;      /* the tab bar is one stop in the wrap */
@@ -568,8 +624,8 @@ void settings_pointer(int x, int y, int down)
         if (drag_row >= 0) set_slider_from_x(drag_row, x);
         return;
     }
-    if (y >= TAB_Y && y < TAB_Y + TAB_H && x >= TITLE_X && x < TITLE_X + tab_w() * tabs_shown()) {
-        if (tab_at((x - TITLE_X) / tab_w()) >= 0) set_tab(tab_at((x - TITLE_X) / tab_w()), 0);
+    if (y >= TAB_Y && y < TAB_Y + TAB_H) {
+        if (tab_at_x(x) >= 0) set_tab(tab_at_x(x), 0);
         return;
     }
     if (y < ROW_Y || y >= ROW_Y + ROW_H * VISIBLE) return;
@@ -705,10 +761,55 @@ static void value_text(const struct setting *s, int r, char *out, size_t n)
     }
 }
 
+/* More lines than fit (N of them, SHOWN at once from AT, each STEP high): a scroll bar right of
+   them, its thumb the part shown, and the footer's right end says how many are below (the ^ and v
+   alone were missed) */
+static void scroll_bar(uint32_t *px, int n, int shown_n, int at, int step)
+{
+    int track = step * shown_n - 2, thumb = track * shown_n / n, from = track * at / n;
+    char more[64];
+    fill(px, SET_W - 9, ROW_Y, 4, track, rgb(C_BORDER));
+    fill(px, SET_W - 9, ROW_Y + from, 4, thumb > 8 ? thumb : 8, rgb(C_SELECT));
+    if (at > 0) text(px, SET_W - 28, ROW_Y - 18, rgb(C_SELECT), "^", -1);
+    if (at + shown_n < n) {
+        text(px, SET_W - 28, ROW_Y + step * shown_n, rgb(C_SELECT), "v", -1);
+        snprintf(more, sizeof more, tr("v %d more below"), n - at - shown_n);
+        text(px, SET_W - 16 - text_width(more), FOOT_Y, rgb(C_SELECT), more, -1);
+    }
+}
+
+/* A line's text on the Keys tab: in the game's drawing for the whole page when the page has any
+   text that is not ASCII, so that its keys ("W" beside "A／D") are in one font */
+static void help_text_at(uint32_t *px, int x, int y, uint32_t c, const char *s, int game)
+{
+    if (game && *s) xl->draw(px, x, y, c, s);
+    else text_raw(px, x, y, c, s, -1);
+}
+
+/* The Keys tab: the game's lines from help_top, a key and what it does, or a heading */
+static void help_draw(uint32_t *px)
+{
+    const struct settings_line *l;
+    int n = help_page(&l), k, y, game = 0;
+    if (help_top > 0 && help_top + LINES_SHOWN > n) help_scroll(0);     /* fewer lines than when scrolled */
+    for (k = 0; k < n && xl && xl->draw; k++)
+        game |= (l[k].key && !ascii(l[k].key)) || (l[k].text && !ascii(l[k].text));
+    for (k = help_top; k < n && k < help_top + LINES_SHOWN; k++) {
+        y = ROW_Y + (k - help_top) * LINE_H;
+        if (l[k].heading) {
+            if (l[k].text) help_text_at(px, LABEL_X, y, rgb(C_SELECT), l[k].text, game);
+            continue;
+        }
+        if (l[k].key) help_text_at(px, LABEL_X + 8, y, rgb(C_TEXT), l[k].key, game);
+        if (l[k].text) help_text_at(px, KEYS_X, y, rgb(C_DIM), l[k].text, game);
+    }
+    if (n > LINES_SHOWN) scroll_bar(px, n, LINES_SHOWN, help_top, LINE_H);
+}
+
 int settings_draw(uint32_t *px)
 {
     char buf[PATH_MAX_LEN];
-    int t, k, r, y, w, n;
+    int t, k, r, y, w, n, tx[SET_TABS], tw[SET_TABS];
     if (!shown) return 0;
     fill(px, 0, 0, SET_W, SET_H, rgb(C_BACK));
     fill(px, 0, 0, SET_W, 2, rgb(C_BORDER));
@@ -717,19 +818,20 @@ int settings_draw(uint32_t *px)
     fill(px, SET_W - 2, 0, 2, SET_H, rgb(C_BORDER));
     text(px, TITLE_X, TITLE_Y, rgb(C_SELECT), title_text, -1);
 
+    tab_layout(tx, tw);
     for (t = 0; t < SET_TABS; t++) {
-        int tw = tab_w(), x, len = text_width(tab_name[t]);
-        if (!tab_shown(t)) continue;
-        x = TITLE_X + tab_place(t) * tw;
+        int x = tx[t], len = text_width(tab_name[t]);
+        if (!tw[t]) continue;
         if (t == cur_tab && sel < 0) {
-            fill(px, x, TAB_Y, tw - 4, TAB_H, rgb(C_SELECT));
-            text(px, x + (tw - 4 - len) / 2, TAB_Y + 4, rgb(C_BACK), tab_name[t], -1);
+            fill(px, x, TAB_Y, tw[t] - 4, TAB_H, rgb(C_SELECT));
+            text(px, x + (tw[t] - 4 - len) / 2, TAB_Y + 4, rgb(C_BACK), tab_name[t], -1);
         } else {
-            text(px, x + (tw - 4 - len) / 2, TAB_Y + 4, rgb(t == cur_tab ? C_SELECT : C_DIM), tab_name[t], -1);
-            if (t == cur_tab) fill(px, x, TAB_Y + TAB_H - 2, tw - 4, 2, rgb(C_SELECT));
+            text(px, x + (tw[t] - 4 - len) / 2, TAB_Y + 4, rgb(t == cur_tab ? C_SELECT : C_DIM), tab_name[t], -1);
+            if (t == cur_tab) fill(px, x, TAB_Y + TAB_H - 2, tw[t] - 4, 2, rgb(C_SELECT));
         }
     }
 
+    if (cur_tab == SET_TAB_HELP) help_draw(px);
     n = tab_count(cur_tab);
     for (k = top; k < n && k < top + VISIBLE; k++) {
         const struct setting *s;
@@ -767,20 +869,7 @@ int settings_draw(uint32_t *px)
             s->preview(px, LABEL_X, HELP_Y + (help[r][0] ? GLYPH_H : 0), SET_W - 2 * LABEL_X,
                        (HELP_LINES - (help[r][0] ? 1 : 0)) * GLYPH_H, value[r]);
     }
-    if (n > VISIBLE) {
-        /* more rows than fit: a scroll bar right of the rows, its thumb the part shown, and the
-           footer's right end says how many are below (the ^ and v alone were missed) */
-        int track = ROW_H * VISIBLE - 2, thumb = track * VISIBLE / n, at = track * top / n;
-        char more[64];
-        fill(px, SET_W - 9, ROW_Y, 4, track, rgb(C_BORDER));
-        fill(px, SET_W - 9, ROW_Y + at, 4, thumb > 8 ? thumb : 8, rgb(C_SELECT));
-        if (top > 0) text(px, SET_W - 28, ROW_Y - 18, rgb(C_SELECT), "^", -1);
-        if (top + VISIBLE < n) {
-            text(px, SET_W - 28, ROW_Y + ROW_H * VISIBLE, rgb(C_SELECT), "v", -1);
-            snprintf(more, sizeof more, tr("v %d more below"), n - top - VISIBLE);
-            text(px, SET_W - 16 - text_width(more), FOOT_Y, rgb(C_SELECT), more, -1);
-        }
-    }
+    if (n > VISIBLE) scroll_bar(px, n, VISIBLE, top, ROW_H);
     if (notice[0]) text(px, LABEL_X, FOOT_Y - 24, rgb(C_SELECT), notice, 76);
     text(px, LABEL_X, FOOT_Y, rgb(C_DIM), FOOTER, -1);
     return 1;

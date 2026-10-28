@@ -24,6 +24,20 @@ static int test_draw(uint32_t *px, int x, int y, uint32_t c, const char *s)
 }
 static int test_width(const char *s) { return 16 * (int)(strlen(s) / 3); }
 static void apply_vol(int v) { applied = v; applies++; }
+static int help_n, help_asked;
+static int help_lines(const struct settings_line **out)
+{
+    static struct settings_line l[40];
+    int i;
+    for (i = 0; i < 40; i++) {
+        l[i].key = i % 10 ? "Ctrl+S" : "";
+        l[i].text = i % 10 ? "Save" : "Moving";
+        l[i].heading = i % 10 == 0;
+    }
+    help_asked++;
+    *out = l;
+    return help_n;
+}
 static const char *const cards[] = { "None", "Sound Blaster", "MT-32", NULL };
 static const char *const cards_stored[] = { "0", "3", "6", NULL };
 static const struct setting T[] = {
@@ -311,6 +325,36 @@ int main(void)
         settings_key(SET_KEY_DOWN);settings_key(SET_KEY_ENTER);
         CHECK(applied==0 && settings_value(1)==0 && !settings_note(1), "routed enhancement applies live without restart");
         settings_show(0);
+    }
+    {
+        static uint32_t px[SET_W * SET_H];
+        int k;
+        enhance_init(F, 2, "test"); enhance_on = 0;
+        help_n = 40;
+        settings_init("h", T, 2, "Test");
+        CHECK(!settings_show_tab(SET_TAB_HELP) && !settings_open(), "no Keys tab without the game's lines");
+        settings_set_help(help_lines);
+        CHECK(settings_show_tab(SET_TAB_HELP) && settings_open() && settings_tab() == SET_TAB_HELP,
+              "Shift+F1's call opens the screen on the Keys tab");
+        help_asked = 0;
+        settings_draw(px);
+        CHECK(help_asked > 0, "the lines are asked when the tab is drawn");
+        for (k = 0; k < 100; k++) settings_key(SET_KEY_DOWN);
+        CHECK(settings_tab() == SET_TAB_HELP, "Down scrolls the lines and stays on the tab");
+        help_n = 3;                                                  /* fewer lines now: back to the top */
+        settings_draw(px);
+        settings_key(SET_KEY_UP);
+        settings_key(SET_KEY_LEFT);
+        CHECK(settings_tab() == SET_TAB_GAME, "Left from the Keys tab goes to the shown tab before it");
+        settings_key(SET_KEY_TAB);
+        CHECK(settings_tab() == SET_TAB_HELP, "Tab passes the hidden tabs to the Keys tab");
+        settings_key(SET_KEY_TAB);
+        CHECK(settings_tab() == SET_TAB_SOUND, "and wraps round after it");
+        settings_show_tab(SET_TAB_HELP);
+        settings_wheel(5);
+        settings_key(SET_KEY_ESC);
+        CHECK(!settings_open(), "Escape closes it");
+        settings_set_help(NULL);
     }
     printf("%d failed\n", fails);
     return fails != 0;

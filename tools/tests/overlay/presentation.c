@@ -20,6 +20,8 @@ static size_t presented_size;
 int (*settings_pick_folder)(const char *);
 int settings_open(void) { return shown; }
 void settings_show(int on) { shown = on; }
+int settings_show_tab(int tab) { (void)tab; return 0; }
+int settings_tab(void) { return 0; }
 void settings_key(int k) { (void)k; }
 void settings_pointer(int x, int y, int down) { (void)x; (void)y; (void)down; }
 void settings_wheel(int steps) { (void)steps; }

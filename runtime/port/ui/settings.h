@@ -7,8 +7,10 @@
 #define SETTINGS_H
 #include <stdint.h>
 
-/* SET_TAB_TEXT, the game's language and text, is shown only when the game's table has rows for it */
-enum { SET_TAB_SOUND, SET_TAB_CONTROLS, SET_TAB_DISPLAY, SET_TAB_ENHANCE, SET_TAB_GAME, SET_TAB_TEXT, SET_TAB_CHEATS, SET_TABS };
+/* SET_TAB_TEXT, the game's language and text, is shown only when the game's table has rows for it;
+   SET_TAB_HELP, the keys, only when the game gives its lines (settings_set_help) */
+enum { SET_TAB_SOUND, SET_TAB_CONTROLS, SET_TAB_DISPLAY, SET_TAB_ENHANCE, SET_TAB_GAME, SET_TAB_TEXT, SET_TAB_CHEATS,
+       SET_TAB_HELP, SET_TABS };
 enum { SET_CYCLE, SET_BOOL, SET_SLIDER, SET_FOLDER, SET_ACTION };
 
 struct setting {
@@ -47,6 +49,17 @@ struct settings_text {
 };
 void settings_set_text(const struct settings_text *text);
 
+/* A line of the Keys tab: a key (or "") and what it does; a heading's text alone, in the title's
+   colour. The game's words as they are, not passed through translate. */
+struct settings_line {
+    const char *key;
+    const char *text;
+    int heading;
+};
+/* The Keys tab's lines: LINES points *OUT at them and returns how many. Asked each time the tab is
+   drawn or scrolled, so that the lines can follow the options the run has. */
+void settings_set_help(int (*lines)(const struct settings_line **out));
+
 enum { SET_KEY_UP, SET_KEY_DOWN, SET_KEY_LEFT, SET_KEY_RIGHT, SET_KEY_TAB, SET_KEY_ENTER,
        SET_KEY_ESC, SET_KEY_F11 };
 
@@ -58,6 +71,8 @@ void settings_init(const char *home, const struct setting *table, int n, const c
 void settings_enhancement(int bit, int tab, void (*apply)(int));
 int  settings_open(void);           /* 1 while shown */
 void settings_show(int on);
+int  settings_show_tab(int tab);    /* opens the screen on TAB's bar; 0 (nothing done) when TAB is not shown */
+int  settings_tab(void);            /* the tab showing */
 void settings_key(int key);         /* SET_KEY_* */
 void settings_pointer(int x, int y, int down);   /* in the layer's 640x400 pixels */
 void settings_wheel(int steps);    /* the mouse wheel: rows down (positive) or up */

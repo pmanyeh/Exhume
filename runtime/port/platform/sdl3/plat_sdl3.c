@@ -245,9 +245,31 @@ static void sync_open(void)
 }
 
 /* One key event of the window: F11 opens and closes the settings screen, which has every other
-   key while it is open; else the game's. */
+   key while it is open; else the game's. Shift+F1 opens it on its Keys tab, where the game has
+   one, and closes it from there; the game never sees that F1, nor its release. The Shifts are
+   followed here, not from SDL's modifiers, so that an input script's keys do the same. */
 static void handle_key(SDL_Scancode sc, int down, int repeat)
 {
+    static int shifts, shift_f1;
+    if (sc == SDL_SCANCODE_LSHIFT || sc == SDL_SCANCODE_RSHIFT) {
+        int bit = sc == SDL_SCANCODE_LSHIFT ? 1 : 2;
+        shifts = down ? shifts | bit : shifts & ~bit;
+    }
+    if (sc == SDL_SCANCODE_F1 && (shift_f1 || (down && shifts))) {
+        if (!down) {
+            shift_f1 = 0;
+            return;
+        }
+        if (!shift_f1 && settings_open() && settings_tab() == SET_TAB_HELP) {
+            settings_key(SET_KEY_ESC);
+            shift_f1 = 1;
+        } else if (!shift_f1)
+            shift_f1 = settings_show_tab(SET_TAB_HELP);
+        if (shift_f1) {
+            sync_open();
+            return;
+        }
+    }
     if (sc == SDL_SCANCODE_F11) {
         if (down && !repeat) {
             if (settings_open()) settings_key(SET_KEY_F11);
