@@ -44,6 +44,9 @@ FLAGS = ['-x', 'c', f'-std={P.game_std}', '-fsigned-char'] + P.defines + ['-ferr
          # the runtime's compat.h, which includes the project's portgame.h (from [port] dir), the
          # stand-in headers, then the game's headers and the runtime's portable.h
          '-include', P.compat, '-I', PORT, '-I', P.stand_ins] + [f for d in P.quote_dirs for f in ('-iquote', d)] + [
+         # last: the runtime's shared port headers (i18n/, presentation/), for a game source's
+         # port-only hooks; after every other directory, so it never hides a header found before
+         '-I', P.runtime_port,
          # widths: what a 16-bit int and 32-bit long become on a 64-bit host
          '-Wpointer-to-int-cast', '-Wint-to-pointer-cast', '-Wshorten-64-to-32',
          '-Wno-unused-value', '-Wno-parentheses', '-Wno-dangling-else',

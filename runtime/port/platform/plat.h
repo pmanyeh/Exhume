@@ -225,6 +225,9 @@ int plat_listdir(const char *dosdir, void (*fn)(const char *name, int isdir, lon
 int plat_write_png(const char *path, const uint8_t *pixels, int width, int height,
                    const uint8_t rgb6[768]);
 int plat_write_png_rgb(const char *path, const uint8_t *rgb, int width, int height);
+/* Tests, any thread: the screenshot (PlatConfig's screenshot_path and window_shot_path) at the
+   next frame shown, as screenshot_after_ms would take it, when none has been taken yet. */
+void plat_request_shot(void);
 
 /* Dialogs, for the user with no terminal (a program started from the Finder or Explorer).
    plat_message shows a message box (and always writes the text to the standard error);

@@ -39,6 +39,8 @@ void plat_pointer_capture(int on)
 }
 
 static SDL_AtomicInt text_req;         /* plat_text_input's request: 0 none, 1 on, 2 off */
+static SDL_AtomicInt shot_req;         /* plat_request_shot's request */
+void plat_request_shot(void) { SDL_SetAtomicInt(&shot_req, 1); }
 static SDL_SpinLock text_lock;
 static char text_buf[256];             /* committed text the game has not taken, UTF-8 */
 static size_t text_len;
@@ -837,7 +839,8 @@ static int loop_step(void)
         }
     }
     hooks->scanout(L.pix, &L.w, &L.hgt, L.pal);
-    if (!L.shot && cfg->screenshot_after_ms > 0 && SDL_GetTicks() - L.start >= (Uint64)cfg->screenshot_after_ms) {
+    if (!L.shot && ((cfg->screenshot_after_ms > 0 && SDL_GetTicks() - L.start >= (Uint64)cfg->screenshot_after_ms) ||
+                    SDL_GetAtomicInt(&shot_req))) {
         L.shot = 1;
         if (plat_write_png(cfg->screenshot_path ? cfg->screenshot_path : PLAT_NAME ".png", L.pix, L.w, L.hgt, L.pal) == 0)
             fprintf(stderr, PLAT_NAME ": wrote %s (%dx%d) at %lu ms\n", cfg->screenshot_path ? cfg->screenshot_path : PLAT_NAME ".png",
