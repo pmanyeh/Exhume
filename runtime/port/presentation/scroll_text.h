@@ -30,6 +30,9 @@ void scroll_text_box(int which, int left, int top, int right, int bottom, int li
 void scroll_text_style(int which, int em64, int letter64, int latin64, int line64);
 /* The [MORE] prompt's words (UTF-8, at most 31 bytes; the default "[MORE]"), before threads (P12). */
 void scroll_text_more_label(const char *utf8);
+/* The game's palette colours for the \0..\6 escapes and the [MORE] prompt (its SCROLL.C's
+   spec_col and scroll_more's), before threads; the defaults are UW1's. */
+void scroll_text_colors(const unsigned char escapes[7], int more);
 /* The measure's context for one box (scroll_text_start gives both boxes its own). */
 void scroll_text_measure_context(int which, void *context);
 /* Strict UTF-8, <=16KiB. Copy before waits; never keep the caller's pointer.

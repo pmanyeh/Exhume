@@ -15,7 +15,14 @@ static ScrollWait wait_for_input;
 static void *measure_context[2], *wait_context;
 static struct { int em64, letter64, latin64, line64; } style[2];
 static FILE *trace;
-static const int colors[] = {0x2e,0x26,0xf1,0x60,0xb4,0xc4,0xd4};
+/* the game's colours for \0..\6 and the [MORE] prompt (UW1's unless scroll_text_colors says) */
+static int colors[] = {0x2e,0x26,0xf1,0x60,0xb4,0xc4,0xd4}, more_color=0x60;
+void scroll_text_colors(const unsigned char escapes[7], int more)
+{
+    int i;
+    for(i=0;i<7;i++)colors[i]=escapes[i];
+    more_color=more;
+}
 
 static void lock(void) { while(atomic_flag_test_and_set_explicit(&busy,memory_order_acquire)) {} }
 static void unlock(void) { atomic_flag_clear_explicit(&busy,memory_order_release); }
@@ -122,7 +129,7 @@ static void more(int which)
     const char *label=more_label;size_t off=0,len=strlen(label);uint32_t cp;int n,color=b->color,row=b->row;
     /* Explicit \m may occur halfway down the NPC paper. Roll one line but
        retain that writing row; automatic bottom overflow already uses the last row. */
-    roll(b);b->row=row;n=b->count;b->color=0x60;
+    roll(b);b->row=row;n=b->count;b->color=more_color;
     while(utf8_next(label,len,&off,&cp)>0)(void)put(b,cp,measure(cp,measure_context[which]),0);
     publish();event("more",which,0);
     if(wait_for_input)wait_for_input(0,wait_context);
