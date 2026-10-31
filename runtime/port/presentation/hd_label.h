@@ -58,6 +58,10 @@ int hd_label_patch(const char *text, int left, int top, int right, int bottom, i
 int hd_label_box(const char *text, int left, int top, int right, int bottom, int color, int align,
                  int em64, int fill, float border);
 void hd_label_clear(void);
+/* The brightest of a picture's common colours (each at least a twentieth of its n opaque, non-0
+   pixels), by the palette rgb6: a lettered button's letters, whatever their outline and shading.
+   -1 when it has none. */
+int hd_label_letter_colour(const unsigned char *img, int n, const uint8_t rgb6[768]);
 /* The game draws a picture over [left, right) x [top, bottom) (top-down game pixels): the
    labels it covers on the page it draws on go, even when it draws again what was under them (a
    background reloaded); those on the other page stay (a screen built on the hidden page). */

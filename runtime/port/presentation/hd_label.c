@@ -48,6 +48,19 @@ void hd_label_clear(void)
     if (!hd_label_enabled() || !work.count) return;
     work.count = 0; publish();
 }
+int hd_label_letter_colour(const unsigned char *img, int n, const uint8_t rgb6[768])
+{
+    static int counts[256];
+    int i, opaque = 0, best = -1, light = -1;
+    memset(counts, 0, sizeof counts);
+    for (i = 0; i < n; i++) if (img[i]) { counts[img[i]]++; opaque++; }
+    for (i = 1; i < 256; i++)
+        if (counts[i] * 20 >= opaque && counts[i]) {
+            int l = rgb6[i * 3] * 3 + rgb6[i * 3 + 1] * 6 + rgb6[i * 3 + 2];
+            if (l > light) { light = l; best = i; }
+        }
+    return best;
+}
 void hd_label_forget(int left, int top, int right, int bottom)
 {
     int i, gone = 0, page;
