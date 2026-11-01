@@ -76,6 +76,7 @@ static void text_put(const char *s)
     }
     SDL_UnlockSpinlock(&text_lock);
 }
+void plat_text_typed(const char *utf8) { text_put(utf8); }
 static int game_status;
 
 /* SDL scan codes (USB HID usages) to PC set-1 make codes. 0 means no key; a value with bit 8

@@ -4,7 +4,10 @@
 #define UW1_MAP_NOTES_H
 #define MAP_NOTE_BYTES 160
 #define MAP_NOTE_LIMIT 100
+/* the same layout under the game's headers' pack(1) as in map_notes.c */
+#pragma pack(push, 8)
 typedef struct MapNoteKey { char text[50]; int x, y; } MapNoteKey;
+#pragma pack(pop)
 /* before the first load: the file's magic word ("UW1NOTES", UW1's by default) and the levels
    (1 to levels; 9 by default) */
 void map_notes_config(const char *magic, int levels);

@@ -23,6 +23,9 @@
                          at the game's next safe point from T on (cheat.c): refused unless the
                          environment has EXHUME_TEST_CHEATS=1, and always in the web build, so
                          that a script passed to a player's build cannot change its game
+       T text WORDS      the rest of the line, UTF-8, committed as the input method commits text
+                         (plat_text_typed): Chinese typed where the game takes it (a map note,
+                         a name), for a test's pictures
    '#' starts a comment. Keys go in as PC set-1 scan codes through the hook real keys use, and
    the pointer through the one the mouse uses, so the game, the recorder and the black box see
    a player's input. The time is the BIOS clock's plus the time the settings screen has been open,
@@ -41,8 +44,9 @@ uint32_t pit_bios_ticks(void);
 uint32_t pit_paused_ms(void);
 void port_test_fault(void);
 
-enum { EV_KEY, EV_DOWN, EV_UP, EV_MOVE, EV_CLICK, EV_LOOK, EV_MDOWN, EV_MUP, EV_WCLICK, EV_WDOWN, EV_FAULT, EV_CHEAT, EV_WHEEL };
-struct ev { uint32_t ms; int kind, code, x, y, button; };
+enum { EV_KEY, EV_DOWN, EV_UP, EV_MOVE, EV_CLICK, EV_LOOK, EV_MDOWN, EV_MUP, EV_WCLICK, EV_WDOWN, EV_FAULT, EV_CHEAT, EV_WHEEL,
+       EV_TEXT };
+struct ev { uint32_t ms; int kind, code, x, y, button; char *text; };
 static struct ev *evs;
 static int nev, next;
 static void (*key_fn)(uint8_t);
@@ -149,8 +153,20 @@ int inscript_load(const char *path, void (*key)(uint8_t), void (*pointer)(const 
             t += 5;                                             /* "cheat" */
             if ((err = cheat_add(t)) != NULL) return bad(f, path, line, err);
             e.kind = EV_CHEAT;
+        } else if (!strcmp(word, "text")) {
+            /* the rest of the line, after the time and the word, without its line end */
+            char *t = buf, *end;
+            while (*t == ' ' || *t == '\t') t++;
+            while (*t && *t != ' ' && *t != '\t') t++;          /* the time */
+            while (*t == ' ' || *t == '\t') t++;
+            t += 4;                                             /* "text" */
+            while (*t == ' ' || *t == '\t') t++;
+            for (end = t + strlen(t); end > t && (end[-1] == '\n' || end[-1] == '\r'); ) *--end = 0;
+            if (!*t || !(e.text = malloc(strlen(t) + 1))) return bad(f, path, line, "text: the text to type");
+            strcpy(e.text, t);
+            e.kind = EV_TEXT;
         } else
-            return bad(f, path, line, "an event: key, down, up, move, click, mdown, mup, look, wheel, wclick, wdown, fault or cheat");
+            return bad(f, path, line, "an event: key, down, up, move, click, mdown, mup, look, wheel, wclick, wdown, text, fault or cheat");
         if (nev && e.ms < evs[nev - 1].ms) return bad(f, path, line, "times must not go back");
         if (nev == cap) {
             struct ev *m = realloc(evs, (size_t)(cap = cap ? cap * 2 : 32) * sizeof *evs);
@@ -221,6 +237,7 @@ void inscript_tick(void)
         case EV_FAULT: port_test_fault(); break;
 #endif
         case EV_CHEAT: cheat_release(); break;
+        case EV_TEXT: plat_text_typed(e->text); break;
         case EV_CLICK:
             send_ptr(PLAT_POINTER_MOVE, e, 0);
             send_ptr(PLAT_POINTER_DOWN, e, (unsigned)e->button);

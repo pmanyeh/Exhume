@@ -159,6 +159,9 @@ void plat_pointer_capture(int on);
    bytes and a 0; whole characters only) and returns its length; the keys still arrive as keys. */
 void plat_text_input(int on);
 size_t plat_text_take(char *out, size_t n);
+/* Text committed as the input method would commit it, from an input script (inscript.c's text):
+   main thread, from PlatHooks.tick. */
+void plat_text_typed(const char *utf8);
 
 /* The settings screen's live options (ui/settings.h), from the main thread, so from inside the
    backend's own loop: the window's display (fullscreen; the scale of the window when not full
