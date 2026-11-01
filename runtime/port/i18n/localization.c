@@ -12,10 +12,21 @@
 #define MAX_ENTRIES 32768u
 #define MAX_TARGET 16384u
 
+/* An entry's English is the source text itself (UW1LOC1) or its FNV-1a 64-bit hash (UW1LOC2,
+   source NULL), so that a catalog given to players holds none of the game's text: the English
+   it is checked against is always the player's own, the string the game is about to show. */
 struct entry {
     unsigned block, index;
     const char *source, *target;
+    unsigned long long hash;
 };
+
+static unsigned long long fnv1a64(const char *s)
+{
+    unsigned long long h = 0xcbf29ce484222325ULL;
+    for (; *s; s++) h = (h ^ (unsigned char)*s) * 0x100000001b3ULL;
+    return h;
+}
 
 static unsigned char *image;
 static struct entry *entries;
@@ -124,6 +135,7 @@ int port_i18n_init(const char *locale, const char *path)
     long length;
     unsigned long n, j;
     size_t pos;
+    int hashed;
     port_i18n_shutdown();
     if (!locale || !strcmp(locale, "en")) return 0;
     if (strcmp(locale, "zh-TW") || !path) return -1;
@@ -141,29 +153,40 @@ int port_i18n_init(const char *locale, const char *path)
         goto bad;
     }
     fclose(f);
-    if (memcmp(image, "UW1LOC1\0", 8)) goto bad;
+    if (!memcmp(image, "UW1LOC1\0", 8)) hashed = 0;
+    else if (!memcmp(image, "UW1LOC2\0", 8)) hashed = 1;
+    else goto bad;
     n = dword(image + 8);
     if (!n || n > MAX_ENTRIES) goto bad;
     entries = calloc((size_t)n, sizeof *entries);
     if (!entries) goto bad;
     pos = 12;
     for (j = 0; j < n; j++) {
-        unsigned long source_len, target_len;
+        unsigned long source_len = 0, target_len;
         struct entry *e = entries + j;
-        if ((size_t)length - pos < 12) goto bad;
+        if ((size_t)length - pos < (hashed ? 16u : 12u)) goto bad;
         e->block = word(image + pos);
         e->index = word(image + pos + 2);
-        source_len = dword(image + pos + 4);
-        target_len = dword(image + pos + 8);
-        pos += 12;
-        if (!static_key(e->block, e->index) || !source_len || source_len > 511 ||
-            !target_len || target_len > MAX_TARGET) goto bad;
+        if (hashed) {
+            /* uint16 block, uint16 index, uint32 target bytes, uint64 the source's hash */
+            target_len = dword(image + pos + 4);
+            e->hash = dword(image + pos + 8) | (unsigned long long)dword(image + pos + 12) << 32;
+            pos += 16;
+        } else {
+            source_len = dword(image + pos + 4);
+            target_len = dword(image + pos + 8);
+            pos += 12;
+            if (!source_len || source_len > 511) goto bad;
+        }
+        if (!static_key(e->block, e->index) || !target_len || target_len > MAX_TARGET) goto bad;
         if (j && (entries[j - 1].block > e->block ||
             (entries[j - 1].block == e->block && entries[j - 1].index >= e->index))) goto bad;
-        if (source_len + target_len + 2 > (size_t)length - pos) goto bad;
-        e->source = (const char *)image + pos;
-        if (memchr(e->source, 0, (size_t)source_len) || image[pos + source_len]) goto bad;
-        pos += (size_t)source_len + 1;
+        if ((hashed ? 0 : source_len + 1) + target_len + 1 > (size_t)length - pos) goto bad;
+        if (!hashed) {
+            e->source = (const char *)image + pos;
+            if (memchr(e->source, 0, (size_t)source_len) || image[pos + source_len]) goto bad;
+            pos += (size_t)source_len + 1;
+        }
         e->target = (const char *)image + pos;
         if (!valid_target(image + pos, (size_t)target_len) || image[pos + target_len]) goto bad;
         pos += (size_t)target_len + 1;
@@ -196,7 +219,8 @@ static const struct entry *locate(unsigned block, unsigned index)
 static const struct entry *find(unsigned block, unsigned index, const char *fallback)
 {
     const struct entry *e = fallback ? locate(block, index) : NULL;
-    return e && !strcmp(e->source, fallback) ? e : NULL;
+    if (!e) return NULL;
+    return (e->source ? !strcmp(e->source, fallback) : e->hash == fnv1a64(fallback)) ? e : NULL;
 }
 
 const char *port_i18n_lookup(unsigned block, unsigned index, const char *fallback)
